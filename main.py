@@ -3,7 +3,7 @@ import js
 from pyodide.ffi import to_js
 
 async def on_fetch(request, env, ctx):
-    # CORS ہیڈرز تاکہ لوو ایبل بلا جھجک سرور سے جڑ سکے
+    # CORS ہیڈرز کی سیٹنگ تاکہ لوو ایبل اور موبائل ایپ ڈائریکٹ کنکٹ ہو سکیں
     headers = js.Headers.new()
     headers.set("Access-Control-Allow-Origin", "*")
     headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -16,7 +16,10 @@ async def on_fetch(request, env, ctx):
         try:
             body_text = await request.text()
             body = json.loads(body_text)
-            user_message = body.get("message", "Hi")
+            
+            user_email = body.get("email", "")
+            user_message = body.get("message", "")
+            agent_name = body.get("agent", "Asha").lower()
 
             api_key = getattr(env, "VERTEX_API_KEY", None)
             if not api_key:
@@ -26,107 +29,97 @@ async def on_fetch(request, env, ctx):
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # 📋 آپ کے کہنے کے مطابق جیمنائی اور کلوڈ 4.7 کے تمام ٹیکسٹ ماڈلز کی مشترکہ لسٹ
-            all_models_to_test = [
-                'gemini-3.1-pro',
-                'gemini-3.1-pro-001',
-                'gemini-3-flash',
-                'gemini-3-flash-001',
-                'gemini-3.1-flash-lite',
-                'gemini-2.5-pro',
-                'gemini-2.5-pro-001',
-                'gemini-2.5-flash',
-                'gemini-2.5-flash-001',
-                'gemini-2.5-flash-lite',
-                'gemini-2-flash',
-                'gemini-2-flash-lite',
-                'gemini-1.5-pro',
-                'gemini-1.5-flash',
-                'claude-opus-4-7', # کلوڈ 4.7 ماڈل شامل کر دیا گیا ہے
-                'gemma-4-26b',
-                'gemma-4-31b'
-            ]
-
-            working_models = []
-            failed_models = []
-            sample_ai_text = ""
-
-            # 🔄 ایک ہی لوپ میں تمام ماڈلز کو باری باری ٹیسٹ کرنے کا جادوئی چکر
-            for model in all_models_to_test:
-                
-                # 🔗 ماڈل کے حساب سے یو آر ایل اور پے لوڈ کی خودکار تبدیلی
-                if "claude" in model:
-                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:rawPredict?key={api_key}"
-                    payload = {
-                        "anthropic_version": "vertex-2023-10-16",
-                        "messages": [{"role": "user", "content": f"You are Sara. Respond with one short sentence in English. User message: {user_message}"}],
-                        "max_tokens": 1024
-                    }
-                else:
-                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent?key={api_key}"
-                    payload = {
-                        "contents": [{
-                            "role": "user",
-                            "parts": [{ "text": f"You are Asha. Respond with one short sentence in Urdu script. User message: {user_message}" }]
-                        }]
-                    }
-
-                # پائتھون ڈکشنری کو خالص جاوا اسکرپٹ آبجیکٹ میں تبدیل کرنا تاکہ کلاؤڈ فلئیر POST ریکوسٹ ہی بھیجے
-                options = {
-                    "method": "POST",
-                    "headers": { "Content-Type": "application/json; charset=utf-8" },
-                    "body": json.dumps(payload)
-                }
-                js_options = to_js(options, dict_converter=js.Object.fromEntries)
-
-                try:
-                    gcp_response = await js.fetch(url, js_options)
-                    
-                    if gcp_response.ok:
-                        res_text = await gcp_response.text()
-                        res_data = json.loads(res_text)
-                        
-                        # جواب نکالنے کی لاجک ماڈل کی ٹائپ کے مطابق
-                        if "claude" in model:
-                            raw_text = res_data.get("content", [{}])[0].get("text", "")
-                        else:
-                            raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        
-                        working_models.append(model)
-                        if not sample_ai_text and raw_text:
-                            sample_ai_text = raw_text
-                    else:
-                        status_code = gcp_response.status
-                        failed_models.append(f"{model} (کوڈ: {status_code})")
-                        
-                except Exception as model_err:
-                    failed_models.append(f"{model} (ایرر: {str(model_err)})")
-
-            # 📊 لوو ایبل اسکرین پر دکھانے کے لیے فائنل مشترکہ رپورٹ
-            report_reply = "📊 **گوگل کلاؤڈ اور کلوڈ ماڈلز کا مشترکہ ٹیسٹ رزلٹ:**\n\n"
-            
-            if working_models:
-                report_reply += "✅ **کامیاب اور فعال ماڈلز (Working Models):**\n"
-                for wm in working_models:
-                    report_reply += f"• {wm}\n"
-                if sample_ai_text:
-                    report_reply += f"\n💬 **لائیو ٹیسٹ جواب:** {sample_ai_text}\n\n"
+            # 🎯 صرف کامیاب اور ایکٹو ماڈلز لاک کر دیے گئے ہیں
+            if user_email == "alirazasabi007@gmail.com":
+                target_model = 'gemini-2.5-pro'  # ایڈمن علی رضا کے لیے سب سے ہیوی پرو انجن
+                base_instruction = "You are Asha, operating in Admin Thinking Mode. Respond beautifully and naturally in Urdu script."
             else:
-                report_reply += "❌ **کوئی بھی جیمنائی یا کلوڈ ماڈل جواب نہیں دے سکا۔**\n\n"
+                target_model = 'gemini-2.5-flash'  # عام یوزرز کے لیے تیز اور کامیاب فلیش انجن
+                base_instruction = "You are Asha, a helpful AI assistant. Respond naturally in Urdu script."
 
-            if failed_models:
-                report_reply += "⚠️ **ناکام ہونے والے ماڈلز (Failed Models):**\n"
-                for fm in failed_models:
-                    report_reply += f"• {fm}\n"
+            # 🎤 چاروں ایجنٹس کی آوازوں اور زبانوں کا فائنل روٹنگ سسٹم
+            if "raza" in agent_name:
+                voice_name = "ur-PK-Standard-B" # اردو مردانہ آواز
+                lang_code = "ur-PK"
+                system_instruction = "You are Raza, a helpful male AI assistant. Respond naturally in Urdu script."
+            elif "sara" in agent_name:
+                voice_name = "en-US-Standard-C" # انگلش زنانہ آواز
+                lang_code = "en-US"
+                system_instruction = "You are Sara, a professional female AI assistant. Respond eloquently in English."
+            elif "david" in agent_name:
+                voice_name = "en-US-Standard-D" # انگلش مردانہ آواز
+                lang_code = "en-US"
+                system_instruction = "You are David, a competent male AI assistant. Respond professionally in English."
+            else:
+                voice_name = "ur-PK-Standard-A" # عائشہ (اردو زنانہ آواز)
+                lang_code = "ur-PK"
+                system_instruction = base_instruction
 
+            # 🔗 گوگل کلاؤڈ ورٹیکس کا آفیشل اینڈ پوائنٹ یو آر ایل
+            url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{target_model}:generateContent?key={api_key}"
+            
+            payload = {
+                "contents": [{
+                    "role": "user",
+                    "parts": [{ "text": f"{system_instruction}\n\nUser Message: {user_message}" }]
+                }]
+            }
+
+            options = {
+                "method": "POST",
+                "headers": { "Content-Type": "application/json; charset=utf-8" },
+                "body": json.dumps(payload)
+            }
+            js_options = to_js(options, dict_converter=js.Object.fromEntries)
+
+            # گوگل کلاؤڈ ورٹیکس سے عائشہ کا اصلی جواب حاصل کرنا
+            gcp_response = await js.fetch(url, js_options)
+
+            if not gcp_response.ok:
+                err_text = await gcp_response.text()
+                return js.Response.new(json.dumps({"reply": f"گوگل کلاؤڈ کنکشن بلاک ایرر ({gcp_response.status}): {err_text}"}), status=200, headers=headers)
+
+            res_text = await gcp_response.text()
+            res_data = json.loads(res_text)
+            
+            raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            if not raw_text:
+                return js.Response.new(json.dumps({"reply": "گوگل کلاؤڈ کی طرف سے خالی جواب ملا ہے۔"}), status=200, headers=headers)
+
+            # 🔊 گوگل کلاؤڈ ٹیکسٹ ٹو اسپیچ (TTS) آواز کا فکسڈ کنکشن
+            audio_base64 = ""
+            try:
+                tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
+                tts_payload = {
+                    "input": { "text": raw_text },
+                    "voice": { "languageCode": lang_code, "name": voice_name },
+                    "audioConfig": { "audioEncoding": "MP3" }
+                }
+                
+                tts_options = {
+                    "method": "POST",
+                    "headers": { "Content-Type": "application/json" },
+                    "body": json.dumps(tts_payload)
+                }
+                js_tts_options = to_js(tts_options, dict_converter=js.Object.fromEntries)
+
+                tts_res = await js.fetch(tts_url, js_tts_options)
+                if tts_res.ok:
+                    tts_data = json.loads(await tts_res.text())
+                    audio_base64 = tts_data.get("audioContent", "")
+            except Exception as tts_err:
+                pass # اگر آڈیو میں کوئی عارضی مسئلہ ہو تو ٹیکسٹ چیٹ خراب نہ ہو
+
+            # فرنٹ اینڈ کو خالص جواب اور آڈیو ڈیٹا ایک ساتھ سپلائی کرنا
             return js.Response.new(json.dumps({
-                "reply": report_reply,
-                "audioContent": "", 
-                "active_model": working_models[0] if working_models else "None"
+                "reply": raw_text,
+                "audioContent": audio_base64,
+                "active_model": target_model,
+                "agent_active": agent_name
             }), status=200, headers=headers)
 
         except Exception as main_err:
             return js.Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
 
-    return js.Response.new("TARS AI Unified Model Scanner Active", status=200, headers=headers)
-                                         
+    return js.Response.new("TARS AI Asha Core Engine Active", status=200, headers=headers)
+            
