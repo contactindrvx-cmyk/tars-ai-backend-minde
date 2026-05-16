@@ -12,7 +12,10 @@ async def on_fetch(request, env, ctx):
 
     if request.method == "POST":
         try:
-            body = await request.json()
+            # 🛠️ جاوا اسکرپٹ پراکسی سے بچنے کے لیے ڈیٹا کو پہلے ٹیکسٹ میں نکال کر پیور پائتھون میں بدلیں
+            body_text = await request.text()
+            body = json.loads(body_text)
+            
             user_email = body.get("email", "")
             user_message = body.get("message", "")
             agent_name = body.get("agent", "Asha").lower()
@@ -24,7 +27,7 @@ async def on_fetch(request, env, ctx):
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # 📋 آپ کی لسٹ کے مطابق ماڈلز کی ترجیحی ترتیب (Testing Loop)
+            # 📋 ورسل والے طریقے کے مطابق ماڈلز کی ترجیحی ترتیب (Testing Loop)
             if user_email == "alirazasabi007@gmail.com":
                 models_to_test = ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-3-flash', 'gemini-2.5-flash']
                 base_instruction = "You are Asha, operating in Admin Thinking Mode. Respond beautifully in Urdu script."
@@ -32,11 +35,19 @@ async def on_fetch(request, env, ctx):
                 models_to_test = ['gemini-3.1-flash-lite', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2-flash']
                 base_instruction = "You are Asha, a helpful AI assistant. Respond naturally in Urdu script."
 
-            # 🎤 آوازوں کی سیٹنگ
+            # 🎤 چاروں ایجنٹس کی آوازوں کا خودکار انتظام
             if "raza" in agent_name:
                 voice_name = "ur-PK-Standard-B"
                 lang_code = "ur-PK"
                 system_instruction = f"{base_instruction} Your name is Raza (Male)."
+            elif "sara" in agent_name:
+                voice_name = "en-US-Standard-C"
+                lang_code = "en-US"
+                system_instruction = f"{base_instruction} Your name is Sara (Female)."
+            elif "david" in agent_name:
+                voice_name = "en-US-Standard-D"
+                lang_code = "en-US"
+                system_instruction = f"{base_instruction} Your name is David (Male)."
             else:
                 voice_name = "ur-PK-Standard-A"
                 lang_code = "ur-PK"
@@ -46,7 +57,7 @@ async def on_fetch(request, env, ctx):
             successful_model = ""
             error_logs = []
 
-            # 🔄 ماڈلز کو ایک ایک کر کے ٹیسٹ کرنے کا خودکار لوپ
+            # 🔄 تمام دستیاب ماڈلز کو باری باری چیک کرنے کا لوپ
             for model in models_to_test:
                 url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent?key={api_key}"
                 
@@ -65,11 +76,11 @@ async def on_fetch(request, env, ctx):
                     })
 
                     if gcp_response.ok:
-                        res_data = json.loads(await gcp_response.text())
+                        res_text = await gcp_response.text()
+                        res_data = json.loads(res_text)
                         raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                         if raw_text:
                             successful_model = model
-                            # ماڈل کا نام جواب کے ساتھ جوڑنا تاکہ وہ بول کر بھی بتائے
                             ai_reply = f"میں ماڈل {model} استعمال کر رہی ہوں۔ " + raw_text
                             break
                     else:
@@ -78,14 +89,14 @@ async def on_fetch(request, env, ctx):
                 except Exception as e:
                     error_logs.append(f"{model} کریش ہوا ({str(e)})")
 
-            # 🚨 اگر سارے ماڈلز فیل ہو جائیں تو اصل ٹیکنیکل وجہ بتائیں
+            # 🚨 اگر گوگل کلاؤڈ پر کوئی بھی ماڈل نہ چلے تو اصل وجہ بتائیں
             if not successful_model:
                 detailed_errors = " | ".join(error_logs)
                 return Response.new(json.dumps({
                     "reply": f"گوگل کلاؤڈ کے تمام ماڈلز ناکام ہو گئے۔ تفصیلات: {detailed_errors}"
                 }), status=200, headers=headers)
 
-            # 🔊 کامیاب ہونے والے ماڈل کی آواز تیار کرنا (Google TTS)
+            # 🔊 گوگل کلاؤڈ ٹیکسٹ ٹو اسپیچ (TTS) آواز کا ملاپ
             audio_base64 = ""
             try:
                 tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
@@ -115,5 +126,5 @@ async def on_fetch(request, env, ctx):
         except Exception as main_err:
             return Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
 
-    return Response.new("TARS AI Multi-Model Testing Core Active", status=200, headers=headers)
+    return Response.new("TARS AI Master Multi-Model Core Active", status=200, headers=headers)
             
