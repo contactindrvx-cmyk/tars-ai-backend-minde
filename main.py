@@ -12,7 +12,6 @@ async def on_fetch(request, env, ctx):
 
     if request.method == "POST":
         try:
-            # 🛠️ جاوا اسکرپٹ پراکسی سے بچنے کے لیے ڈیٹا کو پہلے ٹیکسٹ میں نکال کر پیور پائتھون میں بدلیں
             body_text = await request.text()
             body = json.loads(body_text)
             
@@ -24,40 +23,56 @@ async def on_fetch(request, env, ctx):
             if not api_key:
                 return Response.new(json.dumps({"reply": "خرابی: کلاؤڈ فلئیر ورکر کی سیٹنگز میں VERTEX_API_KEY نہیں ملی۔"}), status=200, headers=headers)
 
+            # 🛠️ سب سے اہم فکس: اے پی آئی کی کے آس پاس سے پوشیدہ فالتو اسپیس اور نیو لائنز کا مکمل خاتمہ
+            api_key = str(api_key).strip()
+
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # 📋 ورسل والے طریقے کے مطابق ماڈلز کی ترجیحی ترتیب (Testing Loop)
-            if user_email == "alirazasabi007@gmail.com":
-                models_to_test = ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-3-flash', 'gemini-2.5-flash']
-                base_instruction = "You are Asha, operating in Admin Thinking Mode. Respond beautifully in Urdu script."
-            else:
-                models_to_test = ['gemini-3.1-flash-lite', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2-flash']
-                base_instruction = "You are Asha, a helpful AI assistant. Respond naturally in Urdu script."
+            # 📋 آپ کی لسٹ کے مطابق گوگل کلاؤڈ کے تمام چھوٹے بڑے ماڈلز کا گرینڈ ٹیسٹنگ لوپ
+            models_to_test = [
+                'gemini-2.5-pro',
+                'gemini-2.5-pro-001',
+                'gemini-3.1-pro',
+                'gemini-3.1-pro-001',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-001',
+                'gemini-3-flash',
+                'gemini-3-flash-001',
+                'gemini-3.1-flash-lite',
+                'gemini-2-flash',
+                'gemini-2-flash-lite',
+                'gemini-2.5-flash-lite',
+                'gemini-1.5-pro',
+                'gemini-1.5-pro-001',
+                'gemini-1.5-flash',
+                'gemini-1.5-flash-001'
+            ]
 
-            # 🎤 چاروں ایجنٹس کی آوازوں کا خودکار انتظام
+            base_instruction = "You are Asha, a warm and friendly AI assistant. Respond beautifully in Urdu script."
+
             if "raza" in agent_name:
                 voice_name = "ur-PK-Standard-B"
                 lang_code = "ur-PK"
-                system_instruction = f"{base_instruction} Your name is Raza (Male)."
+                system_instruction = "You are Raza, a helpful male AI assistant. Respond naturally in Urdu script."
             elif "sara" in agent_name:
                 voice_name = "en-US-Standard-C"
                 lang_code = "en-US"
-                system_instruction = f"{base_instruction} Your name is Sara (Female)."
+                system_instruction = "You are Sara, a professional female AI assistant. Respond eloquently in English."
             elif "david" in agent_name:
                 voice_name = "en-US-Standard-D"
                 lang_code = "en-US"
-                system_instruction = f"{base_instruction} Your name is David (Male)."
+                system_instruction = "You are David, a competent male AI assistant. Respond professionally in English."
             else:
                 voice_name = "ur-PK-Standard-A"
                 lang_code = "ur-PK"
-                system_instruction = f"{base_instruction} Your name is Asha (Female)."
+                system_instruction = base_instruction
 
             ai_reply = ""
             successful_model = ""
             error_logs = []
 
-            # 🔄 تمام دستیاب ماڈلز کو باری باری چیک کرنے کا لوپ
+            # 🔄 تمام ماڈلز کو باری باری ہٹ مارنے کا خودکار چکر
             for model in models_to_test:
                 url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent?key={api_key}"
                 
@@ -84,19 +99,19 @@ async def on_fetch(request, env, ctx):
                             ai_reply = f"میں ماڈل {model} استعمال کر رہی ہوں۔ " + raw_text
                             break
                     else:
-                        err_reason = await gcp_response.text()
-                        error_logs.append(f"{model} ریجیکٹ ہوا ({gcp_response.status})")
+                        gcp_status = gcp_response.status
+                        error_logs.append(f"{model} ({gcp_status})")
                 except Exception as e:
-                    error_logs.append(f"{model} کریش ہوا ({str(e)})")
+                    error_logs.append(f"{model} error ({str(e)})")
 
-            # 🚨 اگر گوگل کلاؤڈ پر کوئی بھی ماڈل نہ چلے تو اصل وجہ بتائیں
+            # 🚨 اگر خدانخواستہ اب بھی تمام ماڈلز فیل ہوں تو اصل وجوہات سامنے آئیں گی
             if not successful_model:
                 detailed_errors = " | ".join(error_logs)
                 return Response.new(json.dumps({
                     "reply": f"گوگل کلاؤڈ کے تمام ماڈلز ناکام ہو گئے۔ تفصیلات: {detailed_errors}"
                 }), status=200, headers=headers)
 
-            # 🔊 گوگل کلاؤڈ ٹیکسٹ ٹو اسپیچ (TTS) آواز کا ملاپ
+            # 🔊 کامیاب ہونے والے ماڈل کے لیے آواز کی تیاری
             audio_base64 = ""
             try:
                 tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
@@ -126,5 +141,5 @@ async def on_fetch(request, env, ctx):
         except Exception as main_err:
             return Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
 
-    return Response.new("TARS AI Master Multi-Model Core Active", status=200, headers=headers)
-            
+    return Response.new("TARS AI Grand Multi-Model Core Active", status=200, headers=headers)
+                    
