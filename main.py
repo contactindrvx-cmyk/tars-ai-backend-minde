@@ -1,145 +1,132 @@
 import json
-from js import Response, Headers, fetch
+import js
+from pyodide.ffi import to_js
 
 async def on_fetch(request, env, ctx):
-    headers = Headers.new()
+    # CORS ہیڈرز تاکہ لوو ایبل بلا جھجک سرور سے جڑ سکے
+    headers = js.Headers.new()
     headers.set("Access-Control-Allow-Origin", "*")
     headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     if request.method == "OPTIONS":
-        return Response.new("", status=200, headers=headers)
+        return js.Response.new("", status=200, headers=headers)
 
     if request.method == "POST":
         try:
             body_text = await request.text()
             body = json.loads(body_text)
-            
-            user_email = body.get("email", "")
-            user_message = body.get("message", "")
-            agent_name = body.get("agent", "Asha").lower()
+            user_message = body.get("message", "Hi")
 
             api_key = getattr(env, "VERTEX_API_KEY", None)
             if not api_key:
-                return Response.new(json.dumps({"reply": "خرابی: کلاؤڈ فلئیر ورکر کی سیٹنگز میں VERTEX_API_KEY نہیں ملی۔"}), status=200, headers=headers)
+                return js.Response.new(json.dumps({"reply": "خرابی: کلاؤڈ فلئیر ورکر کی سیٹنگز میں VERTEX_API_KEY نہیں ملی۔"}), status=200, headers=headers)
 
-            # 🛠️ سب سے اہم فکس: اے پی آئی کی کے آس پاس سے پوشیدہ فالتو اسپیس اور نیو لائنز کا مکمل خاتمہ
             api_key = str(api_key).strip()
-
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # 📋 آپ کی لسٹ کے مطابق گوگل کلاؤڈ کے تمام چھوٹے بڑے ماڈلز کا گرینڈ ٹیسٹنگ لوپ
-            models_to_test = [
-                'gemini-2.5-pro',
-                'gemini-2.5-pro-001',
+            # 📋 آپ کے کہنے کے مطابق جیمنائی اور کلوڈ 4.7 کے تمام ٹیکسٹ ماڈلز کی مشترکہ لسٹ
+            all_models_to_test = [
                 'gemini-3.1-pro',
                 'gemini-3.1-pro-001',
-                'gemini-2.5-flash',
-                'gemini-2.5-flash-001',
                 'gemini-3-flash',
                 'gemini-3-flash-001',
                 'gemini-3.1-flash-lite',
+                'gemini-2.5-pro',
+                'gemini-2.5-pro-001',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-001',
+                'gemini-2.5-flash-lite',
                 'gemini-2-flash',
                 'gemini-2-flash-lite',
-                'gemini-2.5-flash-lite',
                 'gemini-1.5-pro',
-                'gemini-1.5-pro-001',
                 'gemini-1.5-flash',
-                'gemini-1.5-flash-001'
+                'claude-opus-4-7', # کلوڈ 4.7 ماڈل شامل کر دیا گیا ہے
+                'gemma-4-26b',
+                'gemma-4-31b'
             ]
 
-            base_instruction = "You are Asha, a warm and friendly AI assistant. Respond beautifully in Urdu script."
+            working_models = []
+            failed_models = []
+            sample_ai_text = ""
 
-            if "raza" in agent_name:
-                voice_name = "ur-PK-Standard-B"
-                lang_code = "ur-PK"
-                system_instruction = "You are Raza, a helpful male AI assistant. Respond naturally in Urdu script."
-            elif "sara" in agent_name:
-                voice_name = "en-US-Standard-C"
-                lang_code = "en-US"
-                system_instruction = "You are Sara, a professional female AI assistant. Respond eloquently in English."
-            elif "david" in agent_name:
-                voice_name = "en-US-Standard-D"
-                lang_code = "en-US"
-                system_instruction = "You are David, a competent male AI assistant. Respond professionally in English."
-            else:
-                voice_name = "ur-PK-Standard-A"
-                lang_code = "ur-PK"
-                system_instruction = base_instruction
-
-            ai_reply = ""
-            successful_model = ""
-            error_logs = []
-
-            # 🔄 تمام ماڈلز کو باری باری ہٹ مارنے کا خودکار چکر
-            for model in models_to_test:
-                url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent?key={api_key}"
+            # 🔄 ایک ہی لوپ میں تمام ماڈلز کو باری باری ٹیسٹ کرنے کا جادوئی چکر
+            for model in all_models_to_test:
                 
-                payload = {
-                    "contents": [{
-                        "role": "user",
-                        "parts": [{ "text": f"{system_instruction}\n\nUser Message: {user_message}" }]
-                    }]
+                # 🔗 ماڈل کے حساب سے یو آر ایل اور پے لوڈ کی خودکار تبدیلی
+                if "claude" in model:
+                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:rawPredict?key={api_key}"
+                    payload = {
+                        "anthropic_version": "vertex-2023-10-16",
+                        "messages": [{"role": "user", "content": f"You are Sara. Respond with one short sentence in English. User message: {user_message}"}],
+                        "max_tokens": 1024
+                    }
+                else:
+                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent?key={api_key}"
+                    payload = {
+                        "contents": [{
+                            "role": "user",
+                            "parts": [{ "text": f"You are Asha. Respond with one short sentence in Urdu script. User message: {user_message}" }]
+                        }]
+                    }
+
+                # پائتھون ڈکشنری کو خالص جاوا اسکرپٹ آبجیکٹ میں تبدیل کرنا تاکہ کلاؤڈ فلئیر POST ریکوسٹ ہی بھیجے
+                options = {
+                    "method": "POST",
+                    "headers": { "Content-Type": "application/json; charset=utf-8" },
+                    "body": json.dumps(payload)
                 }
+                js_options = to_js(options, dict_converter=js.Object.fromEntries)
 
                 try:
-                    gcp_response = await fetch(url, {
-                        "method": "POST",
-                        "headers": { "Content-Type": "application/json" },
-                        "body": json.dumps(payload)
-                    })
-
+                    gcp_response = await js.fetch(url, js_options)
+                    
                     if gcp_response.ok:
                         res_text = await gcp_response.text()
                         res_data = json.loads(res_text)
-                        raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        if raw_text:
-                            successful_model = model
-                            ai_reply = f"میں ماڈل {model} استعمال کر رہی ہوں۔ " + raw_text
-                            break
+                        
+                        # جواب نکالنے کی لاجک ماڈل کی ٹائپ کے مطابق
+                        if "claude" in model:
+                            raw_text = res_data.get("content", [{}])[0].get("text", "")
+                        else:
+                            raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        
+                        working_models.append(model)
+                        if not sample_ai_text and raw_text:
+                            sample_ai_text = raw_text
                     else:
-                        gcp_status = gcp_response.status
-                        error_logs.append(f"{model} ({gcp_status})")
-                except Exception as e:
-                    error_logs.append(f"{model} error ({str(e)})")
+                        status_code = gcp_response.status
+                        failed_models.append(f"{model} (کوڈ: {status_code})")
+                        
+                except Exception as model_err:
+                    failed_models.append(f"{model} (ایرر: {str(model_err)})")
 
-            # 🚨 اگر خدانخواستہ اب بھی تمام ماڈلز فیل ہوں تو اصل وجوہات سامنے آئیں گی
-            if not successful_model:
-                detailed_errors = " | ".join(error_logs)
-                return Response.new(json.dumps({
-                    "reply": f"گوگل کلاؤڈ کے تمام ماڈلز ناکام ہو گئے۔ تفصیلات: {detailed_errors}"
-                }), status=200, headers=headers)
+            # 📊 لوو ایبل اسکرین پر دکھانے کے لیے فائنل مشترکہ رپورٹ
+            report_reply = "📊 **گوگل کلاؤڈ اور کلوڈ ماڈلز کا مشترکہ ٹیسٹ رزلٹ:**\n\n"
+            
+            if working_models:
+                report_reply += "✅ **کامیاب اور فعال ماڈلز (Working Models):**\n"
+                for wm in working_models:
+                    report_reply += f"• {wm}\n"
+                if sample_ai_text:
+                    report_reply += f"\n💬 **لائیو ٹیسٹ جواب:** {sample_ai_text}\n\n"
+            else:
+                report_reply += "❌ **کوئی بھی جیمنائی یا کلوڈ ماڈل جواب نہیں دے سکا۔**\n\n"
 
-            # 🔊 کامیاب ہونے والے ماڈل کے لیے آواز کی تیاری
-            audio_base64 = ""
-            try:
-                tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
-                tts_payload = {
-                    "input": { "text": ai_reply },
-                    "voice": { "languageCode": lang_code, "name": voice_name },
-                    "audioConfig": { "audioEncoding": "MP3" }
-                }
-                tts_res = await fetch(tts_url, {
-                    "method": "POST",
-                    "headers": { "Content-Type": "application/json" },
-                    "body": json.dumps(tts_payload)
-                })
-                if tts_res.ok:
-                    tts_data = json.loads(await tts_res.text())
-                    audio_base64 = tts_data.get("audioContent", "")
-            except Exception as tts_err:
-                pass
+            if failed_models:
+                report_reply += "⚠️ **ناکام ہونے والے ماڈلز (Failed Models):**\n"
+                for fm in failed_models:
+                    report_reply += f"• {fm}\n"
 
-            return Response.new(json.dumps({
-                "reply": ai_reply,
-                "audioContent": audio_base64,
-                "active_model": successful_model,
-                "agent_active": agent_name
+            return js.Response.new(json.dumps({
+                "reply": report_reply,
+                "audioContent": "", 
+                "active_model": working_models[0] if working_models else "None"
             }), status=200, headers=headers)
 
         except Exception as main_err:
-            return Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
+            return js.Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
 
-    return Response.new("TARS AI Grand Multi-Model Core Active", status=200, headers=headers)
-                    
+    return js.Response.new("TARS AI Unified Model Scanner Active", status=200, headers=headers)
+                                         
