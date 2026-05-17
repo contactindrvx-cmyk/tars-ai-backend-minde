@@ -18,39 +18,43 @@ async def on_fetch(request, env, ctx):
             
             user_email = body.get("email", "")
             user_message = body.get("message", "")
-            # لوو ایبل سے آنے والے ایکٹو ایجنٹ کا نام پکڑنا
             agent_name = body.get("agent", "Asha").lower()
 
-            api_key = getattr(env, "VERTEX_API_KEY", None)
-            if not api_key:
-                return js.Response.new(json.dumps({"reply": "خرابی: کلاؤڈ فلئیر ورکر کی سیٹنگز میں VERTEX_API_KEY نہیں ملی۔"}), status=200, headers=headers)
+            # 💡 اصل خرابی کا حل: کلاؤڈ فلئیر کے خفیہ سیکشن سے دونوں چابیاں الگ الگ منگوانا
+            vertex_key = getattr(env, "VERTEX_API_KEY", None)
+            tts_key = getattr(env, "TTS_API_KEY", None)
 
-            api_key = str(api_key).strip()
+            if not vertex_key or not tts_key:
+                return js.Response.new(json.dumps({"reply": "خرابی: کلاؤڈ فلئیر میں VERTEX_API_KEY یا TTS_API_KEY سیٹ نہیں ہے۔"}), status=200, headers=headers)
+
+            vertex_key = str(vertex_key).strip()
+            tts_key = str(tts_key).strip()
+
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # کامیاب ماڈلز لاک کر دیے گئے ہیں
             target_model = 'gemini-2.5-pro' if user_email == "alirazasabi007@gmail.com" else 'gemini-2.5-flash'
 
-            # 🎤 آوازوں، زبانوں اور جینڈر (Gender) کا فائنل روٹنگ سسٹم
+            # 🎤 آوازوں، زبانوں اور جینڈر کا فائنل روٹنگ سسٹم
             if "raza" in agent_name:
-                voice_name = "ur-PK-Standard-B" # اردو مردانہ آواز
+                voice_name = "ur-PK-Standard-B"
                 lang_code = "ur-PK"
                 system_instruction = "You are Raza, a helpful and smart male AI assistant. Respond naturally in Urdu script."
             elif "sara" in agent_name:
-                voice_name = "en-US-Standard-C" # انگلش زنانہ آواز
+                voice_name = "en-US-Standard-C"
                 lang_code = "en-US"
                 system_instruction = "You are Sara, a professional female AI assistant. Respond eloquently in English."
             elif "david" in agent_name:
-                voice_name = "en-US-Standard-D" # انگلش مردانہ آواز
+                voice_name = "en-US-Standard-D"
                 lang_code = "en-US"
                 system_instruction = "You are David, a competent male AI assistant. Respond professionally in English."
             else:
-                voice_name = "ur-PK-Standard-A" # عائشہ (اردو زنانہ آواز)
+                voice_name = "ur-PK-Standard-A"
                 lang_code = "ur-PK"
                 system_instruction = "You are Asha, a warm and friendly female AI assistant. Respond beautifully in Urdu script."
 
-            url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{target_model}:generateContent?key={api_key}"
+            # دماغ کو کال کرنا (Vertex Key کے ساتھ)
+            url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{target_model}:generateContent?key={vertex_key}"
             
             payload = {
                 "contents": [{
@@ -75,10 +79,10 @@ async def on_fetch(request, env, ctx):
             res_data = json.loads(res_text)
             raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
-            # 🔊 گوگل کلاؤڈ ٹیکسٹ ٹو اسپیچ (TTS) وائس پروٹیکشن لاجک
+            # 🔊 آواز کو کال کرنا (نئی آزاد TTS_KEY کے ساتھ)
             audio_base64 = ""
             try:
-                tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
+                tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={tts_key}"
                 tts_payload = {
                     "input": { "text": raw_text },
                     "voice": { "languageCode": lang_code, "name": voice_name },
@@ -96,9 +100,9 @@ async def on_fetch(request, env, ctx):
                     tts_data = json.loads(await tts_res.text())
                     audio_base64 = tts_data.get("audioContent", "")
                 else:
-                    # اگر گوگل کلاؤڈ آواز دینے سے انکار کرے تو ٹیکسٹ میں ایرر کوڈ دکھائیں
                     tts_err_status = tts_res.status
-                    raw_text += f"\n\n⚠️ (گوگل کلاؤڈ آواز کا مسئلہ: {tts_err_status}۔ برائے مہربانی چیک کریں کہ گوگل کلاؤڈ کنسول میں Text-to-Speech API آن ہے یا نہیں)"
+                    err_detail = await tts_res.text()
+                    raw_text += f"\n\n⚠️ (گوگل کلاؤڈ آواز کا مسئلہ: {tts_err_status} - {err_detail})"
             except Exception as tts_err:
                 raw_text += f"\n\n⚠️ (آواز کا اندرونی کریش: {str(tts_err)})"
 
@@ -113,4 +117,4 @@ async def on_fetch(request, env, ctx):
             return js.Response.new(json.dumps({"reply": f"سرور کے اندرونی سسٹم میں خرابی: {str(main_err)}"}), status=200, headers=headers)
 
     return js.Response.new("TARS AI Active Core Engine", status=200, headers=headers)
-                
+            
