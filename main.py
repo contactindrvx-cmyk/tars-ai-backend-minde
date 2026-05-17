@@ -19,7 +19,7 @@ async def on_fetch(request, env, ctx):
             user_message = body.get("message", "")
             agent_name = body.get("agent", "Asha").lower()
 
-            # کلاؤڈ فلئیر کے خفیہ ویری ایبلز سے دونوں چابیاں منگوانا
+            # کلاؤڈ فلئیر کے خفیہ ویری ایبلز سے چابیاں حاصل کرنا
             vertex_key = getattr(env, "VERTEX_API_KEY", None)
             tts_key = getattr(env, "TTS_API_KEY", None)
 
@@ -32,10 +32,10 @@ async def on_fetch(request, env, ctx):
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            # 🚀 بل بچانے اور راکٹ سپیڈ کے لیے لیٹسٹ 3.1 فلیش لائٹ ماڈل سیٹ کر دیا گیا ہے
-            target_model = 'gemini-3.1-flash-lite'
+            # 🎯 404 ایرر سے بچنے اور تیز ترین سپیڈ کے لیے تصدیق شدہ فعال ماڈل لاک کر دیا گیا ہے
+            target_model = 'gemini-2.5-flash-lite'
 
-            # 🎤 آوازوں، زبانوں اور جینڈر کا فکسڈ پریمیم (Wavenet) روٹنگ سسٹم
+            # 🎤 آوازوں، زبانوں اور جینڈر کا پریمیم (Wavenet) روٹنگ سسٹم
             if "raza" in agent_name:
                 voice_name = "ur-IN-Wavenet-B" # پریمیم اردو مردانہ آواز
                 lang_code = "ur-IN"
@@ -53,7 +53,7 @@ async def on_fetch(request, env, ctx):
                 lang_code = "ur-IN"
                 system_instruction = "You are Asha, a warm and friendly female AI assistant. Respond beautifully in Urdu script."
 
-            # دماغ کو کال کرنا (تیز ترین ماڈل کے ساتھ)
+            # دماغ کو کال کرنا (گوگل کلاؤڈ ورٹیکس اے آئی)
             url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{target_model}:generateContent?key={vertex_key}"
             
             payload = {
@@ -79,7 +79,7 @@ async def on_fetch(request, env, ctx):
             res_data = json.loads(res_text)
             raw_text = res_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
-            # 🔊 آواز کو کال کرنا (نئی آزاد TTS_KEY کے ساتھ)
+            # 🔊 آواز کو کال کرنا (آزاد پبلک چابی کے ساتھ)
             audio_base64 = ""
             try:
                 tts_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={tts_key}"
