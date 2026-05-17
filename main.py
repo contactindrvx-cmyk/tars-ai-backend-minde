@@ -16,11 +16,10 @@ async def on_fetch(request, env, ctx):
             body_text = await request.text()
             body = json.loads(body_text)
             
-            user_email = body.get("email", "")
             user_message = body.get("message", "")
             agent_name = body.get("agent", "Asha").lower()
 
-            # 💡 اصل خرابی کا حل: کلاؤڈ فلئیر کے خفیہ سیکشن سے دونوں چابیاں الگ الگ منگوانا
+            # کلاؤڈ فلئیر کے خفیہ ویری ایبلز سے دونوں چابیاں منگوانا
             vertex_key = getattr(env, "VERTEX_API_KEY", None)
             tts_key = getattr(env, "TTS_API_KEY", None)
 
@@ -33,27 +32,28 @@ async def on_fetch(request, env, ctx):
             project = 'tars-ai-chat-ann-assistant'
             location = 'us-central1'
             
-            target_model = 'gemini-2.5-pro' if user_email == "alirazasabi007@gmail.com" else 'gemini-2.5-flash'
+            # 🚀 بل بچانے اور راکٹ سپیڈ کے لیے لیٹسٹ 3.1 فلیش لائٹ ماڈل سیٹ کر دیا گیا ہے
+            target_model = 'gemini-3.1-flash-lite'
 
-            # 🎤 آوازوں، زبانوں اور جینڈر کا فائنل روٹنگ سسٹم
+            # 🎤 آوازوں، زبانوں اور جینڈر کا فکسڈ پریمیم (Wavenet) روٹنگ سسٹم
             if "raza" in agent_name:
-                voice_name = "ur-PK-Standard-B"
-                lang_code = "ur-PK"
+                voice_name = "ur-IN-Wavenet-B" # پریمیم اردو مردانہ آواز
+                lang_code = "ur-IN"
                 system_instruction = "You are Raza, a helpful and smart male AI assistant. Respond naturally in Urdu script."
             elif "sara" in agent_name:
-                voice_name = "en-US-Standard-C"
+                voice_name = "en-US-Standard-C" # انگلش زنانہ آواز
                 lang_code = "en-US"
                 system_instruction = "You are Sara, a professional female AI assistant. Respond eloquently in English."
             elif "david" in agent_name:
-                voice_name = "en-US-Standard-D"
+                voice_name = "en-US-Standard-D" # انگلش مردانہ آواز
                 lang_code = "en-US"
                 system_instruction = "You are David, a competent male AI assistant. Respond professionally in English."
             else:
-                voice_name = "ur-PK-Standard-A"
-                lang_code = "ur-PK"
+                voice_name = "ur-IN-Wavenet-A" # عائشہ کی پریمیم اردو زنانہ آواز
+                lang_code = "ur-IN"
                 system_instruction = "You are Asha, a warm and friendly female AI assistant. Respond beautifully in Urdu script."
 
-            # دماغ کو کال کرنا (Vertex Key کے ساتھ)
+            # دماغ کو کال کرنا (تیز ترین ماڈل کے ساتھ)
             url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{target_model}:generateContent?key={vertex_key}"
             
             payload = {
