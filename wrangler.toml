@@ -1,4 +1,4 @@
 name = "tars-ai-backend-minde"
 main = "main.py"
-compatibility_date = "2024-03-18"
+compatibility_date = "2025-09-24"
 compatibility_flags = ["python_workers"]
