@@ -74,9 +74,11 @@ export default {
           systemInstruction = "You are Asha, a warm female AI assistant. Respond in Urdu script.";
         }
 
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${vertexKey}`;
+        const project = "tars-ai-chat-ann-assistant";
+        const location = "us-central1";
+        const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash-lite:generateContent?key=${vertexKey}`;
 
-        const gcpRes = await fetch(geminiUrl, {
+        const gcpRes = await fetch(vertexUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -89,7 +91,7 @@ export default {
 
         if (!gcpRes.ok) {
           const err = await gcpRes.text();
-          return new Response(JSON.stringify({ reply: `Gemini Error: ${err}` }), { status: 200, headers });
+          return new Response(JSON.stringify({ reply: `Vertex Error: ${err}` }), { status: 200, headers });
         }
 
         const resData = await gcpRes.json();
