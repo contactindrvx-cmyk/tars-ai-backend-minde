@@ -11,107 +11,33 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
-    // OAuth token لینے کا function
-    async function getAccessToken(serviceAccountJson) {
-      const sa = JSON.parse(serviceAccountJson);
-      const now = Math.floor(Date.now() / 1000);
-      
-      const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-      const payload = btoa(JSON.stringify({
-        iss: sa.client_email,
-        scope: "https://www.googleapis.com/auth/cloud-platform",
-        aud: "https://oauth2.googleapis.com/token",
-        exp: now + 3600,
-        iat: now
-      }));
-
-      const signingInput = `${header}.${payload}`;
-      
-      // Private key process
-      const pemKey = sa.private_key;
-      const pemContents = pemKey
-        .replace("-----BEGIN PRIVATE KEY-----", "")
-        .replace("-----END PRIVATE KEY-----", "")
-        .replace(/\n/g, "");
-      
-      const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-      
-      const cryptoKey = await crypto.subtle.importKey(
-        "pkcs8",
-        binaryKey.buffer,
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        false,
-        ["sign"]
-      );
-
-      const encoder = new TextEncoder();
-      const signature = await crypto.subtle.sign(
-        "RSASSA-PKCS1-v1_5",
-        cryptoKey,
-        encoder.encode(signingInput)
-      );
-
-      const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
-      const jwt = `${signingInput}.${sigB64}`;
-
-      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
-      });
-
-      const tokenData = await tokenRes.json();
-      return tokenData.access_token;
-    }
-
-    // WebSocket Live Call - Vertex AI
+    // WebSocket Live Call
     if (request.headers.get("Upgrade") === "websocket") {
       try {
-        const saJson = env.GOOGLE_SERVICE_ACCOUNT;
-        if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
+        const vertexKey = env.VERTEX_API_KEY;
+        if (!vertexKey) return new Response("VERTEX_API_KEY missing", { status: 400 });
 
-        const accessToken = await getAccessToken(saJson);
-        
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
-        const model = "gemini-2.5-flash-preview-native-audio-dialog";
-        
-        const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
+        const model = "gemini-2.0-flash-live-001";
+
+        const geminiLiveUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${vertexKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
-        const gcpRes = await fetch(vertexUrl, {
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Upgrade": "websocket",
-            "x-goog-user-project": project
-          }
+        const gcpRes = await fetch(geminiLiveUrl, {
+          headers: { "Upgrade": "websocket" }
         });
 
         if (!gcpRes.webSocket) {
-          return new Response("Vertex AI WebSocket failed", { status: 500 });
+          server.close(1011, "Upstream WS failed");
+          return new Response("Upstream WebSocket failed", { status: 500 });
         }
 
         const gcp = gcpRes.webSocket;
         gcp.accept();
-
-        // Setup message بھیجو
-        const setupMsg = JSON.stringify({
-          setup: {
-            model: `projects/${project}/locations/${location}/publishers/google/models/${model}`,
-            generation_config: {
-              response_modalities: ["AUDIO"],
-              speech_config: {
-                voice_config: {
-                  prebuilt_voice_config: { voice_name: "Aoede" }
-                }
-              }
-            }
-          }
-        });
-        gcp.send(setupMsg);
 
         server.addEventListener("message", (e) => {
           try { gcp.send(e.data); } catch {}
@@ -119,8 +45,15 @@ export default {
         gcp.addEventListener("message", (e) => {
           try { server.send(e.data); } catch {}
         });
-        server.addEventListener("close", () => { try { gcp.close(); } catch {} });
-        gcp.addEventListener("close", () => { try { server.close(); } catch {} });
+        server.addEventListener("close", (e) => {
+          try { gcp.close(e.code, e.reason); } catch {}
+        });
+        gcp.addEventListener("close", (e) => {
+          try { server.close(e.code, e.reason); } catch {}
+        });
+        gcp.addEventListener("error", () => {
+          try { server.close(1011, "Upstream error"); } catch {}
+        });
 
         return new Response(null, { status: 101, webSocket: client });
 
@@ -129,7 +62,7 @@ export default {
       }
     }
 
-    // POST Text Chat - Vertex AI
+    // POST Text Chat
     if (request.method === "POST") {
       try {
         const body = await request.json();
