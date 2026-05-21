@@ -11,25 +11,29 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
-    // WebSocket Live Call - Gemini Live API
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const geminiKey = env.GEMINI_LIVE_KEY;
         if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
 
-        const geminiLiveUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
+        // ✅ wss کی جگہ https — یہی اصل fix ہے!
+        const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
         const gcpRes = await fetch(geminiLiveUrl, {
-          headers: { "Upgrade": "websocket" }
+          headers: {
+            "Upgrade": "websocket",
+            "Connection": "Upgrade",
+          }
         });
 
         if (!gcpRes.webSocket) {
+          const errText = await gcpRes.text().catch(() => "no body");
           server.close(1011, "Upstream WS failed");
-          return new Response("Gemini WebSocket failed", { status: 500 });
+          return new Response(`Gemini WS failed ${gcpRes.status}: ${errText}`, { status: 500 });
         }
 
         const gcp = gcpRes.webSocket;
@@ -47,7 +51,7 @@ export default {
         gcp.addEventListener("close", (e) => {
           try { server.close(e.code, e.reason); } catch {}
         });
-        gcp.addEventListener("error", () => {
+        gcp.addEventListener("error", (e) => {
           try { server.close(1011, "Upstream error"); } catch {}
         });
 
@@ -58,7 +62,6 @@ export default {
       }
     }
 
-    // POST Text Chat - Vertex AI
     if (request.method === "POST") {
       try {
         const body = await request.json();
