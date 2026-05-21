@@ -17,7 +17,7 @@ export default {
         const geminiKey = env.GEMINI_LIVE_KEY;
         if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
 
-        const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
+        const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
