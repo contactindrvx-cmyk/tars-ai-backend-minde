@@ -11,49 +11,102 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
+    // ✅ WebSocket Live Call
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const geminiKey = env.GEMINI_LIVE_KEY;
         if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
 
-        // ✅ wss کی جگہ https — یہی اصل fix ہے!
         const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
-        const gcpRes = await fetch(geminiLiveUrl, {
-          headers: {
-            "Upgrade": "websocket",
-            "Connection": "Upgrade",
+        let gcp = null;
+        let gcpReady = false;
+        const pendingQueue = [];
+
+        try {
+          const gcpRes = await fetch(geminiLiveUrl, {
+            headers: {
+              "Upgrade": "websocket",
+              "Connection": "Upgrade",
+            }
+          });
+
+          if (!gcpRes.webSocket) {
+            server.close(1011, "Gemini WS failed");
+            return new Response("Gemini WebSocket failed", { status: 500 });
           }
-        });
 
-        if (!gcpRes.webSocket) {
-          const errText = await gcpRes.text().catch(() => "no body");
-          server.close(1011, "Upstream WS failed");
-          return new Response(`Gemini WS failed ${gcpRes.status}: ${errText}`, { status: 500 });
+          gcp = gcpRes.webSocket;
+          gcp.accept();
+
+          // ✅ Worker خود setup message بھیجتا ہے — model force کرتا ہے
+          const setupMsg = JSON.stringify({
+            setup: {
+              model: "models/gemini-live-2.5-flash-native-audio",
+              generation_config: {
+                response_modalities: ["AUDIO"],
+                speech_config: {
+                  voice_config: {
+                    prebuilt_voice_config: {
+                      voice_name: "Aoede"
+                    }
+                  }
+                }
+              },
+              system_instruction: {
+                parts: [{
+                  text: "You are TARS AI, a helpful multilingual assistant. Respond naturally in the language the user speaks. Be warm, concise, and helpful."
+                }]
+              }
+            }
+          });
+
+          gcp.send(setupMsg);
+          gcpReady = true;
+
+          // pending messages بھیجو
+          for (const msg of pendingQueue) {
+            try { gcp.send(msg); } catch {}
+          }
+
+          // client سے آنے والا سب Gemini کو forward کرو
+          server.addEventListener("message", (e) => {
+            if (!gcp || gcp.readyState !== 1) return;
+            try {
+              // setup message کو ignore کرو — Worker پہلے بھیج چکا ہے
+              const parsed = JSON.parse(e.data);
+              if (parsed?.setup) return;
+              gcp.send(e.data);
+            } catch {
+              try { gcp.send(e.data); } catch {}
+            }
+          });
+
+          // Gemini سے آنے والا سب client کو forward کرو
+          gcp.addEventListener("message", (e) => {
+            try { server.send(e.data); } catch {}
+          });
+
+          server.addEventListener("close", (e) => {
+            try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
+          });
+
+          gcp.addEventListener("close", (e) => {
+            try { server.close(e.code || 1000, e.reason || ""); } catch {}
+          });
+
+          gcp.addEventListener("error", () => {
+            try { server.close(1011, "Gemini error"); } catch {}
+          });
+
+        } catch (e) {
+          try { server.close(1011, e.message); } catch {}
+          return new Response(`WS setup failed: ${e.message}`, { status: 500 });
         }
-
-        const gcp = gcpRes.webSocket;
-        gcp.accept();
-
-        server.addEventListener("message", (e) => {
-          try { gcp.send(e.data); } catch {}
-        });
-        gcp.addEventListener("message", (e) => {
-          try { server.send(e.data); } catch {}
-        });
-        server.addEventListener("close", (e) => {
-          try { gcp.close(e.code, e.reason); } catch {}
-        });
-        gcp.addEventListener("close", (e) => {
-          try { server.close(e.code, e.reason); } catch {}
-        });
-        gcp.addEventListener("error", (e) => {
-          try { server.close(1011, "Upstream error"); } catch {}
-        });
 
         return new Response(null, { status: 101, webSocket: client });
 
@@ -62,6 +115,7 @@ export default {
       }
     }
 
+    // ✅ POST Text Chat - Vertex AI
     if (request.method === "POST") {
       try {
         const body = await request.json();
