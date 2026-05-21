@@ -11,17 +11,13 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
-    // WebSocket Live Call
+    // WebSocket Live Call - Gemini Live API
     if (request.headers.get("Upgrade") === "websocket") {
       try {
-        const vertexKey = env.VERTEX_API_KEY;
-        if (!vertexKey) return new Response("VERTEX_API_KEY missing", { status: 400 });
+        const geminiKey = env.GEMINI_LIVE_KEY;
+        if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
 
-        const project = "tars-ai-chat-ann-assistant";
-        const location = "us-central1";
-        const model = "gemini-2.0-flash-live-001";
-
-        const geminiLiveUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${vertexKey}`;
+        const geminiLiveUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
@@ -33,7 +29,7 @@ export default {
 
         if (!gcpRes.webSocket) {
           server.close(1011, "Upstream WS failed");
-          return new Response("Upstream WebSocket failed", { status: 500 });
+          return new Response("Gemini WebSocket failed", { status: 500 });
         }
 
         const gcp = gcpRes.webSocket;
@@ -62,7 +58,7 @@ export default {
       }
     }
 
-    // POST Text Chat
+    // POST Text Chat - Vertex AI
     if (request.method === "POST") {
       try {
         const body = await request.json();
