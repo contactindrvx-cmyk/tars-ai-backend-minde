@@ -17,7 +17,7 @@ export default {
         const geminiKey = env.GEMINI_LIVE_KEY;
         if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
 
-        const geminiLiveUrl = `https://us-central1-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent?key=${geminiKey}`;
+        const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
@@ -46,7 +46,7 @@ export default {
           // ✅ Worker خود setup message بھیجتا ہے — model force کرتا ہے
           const setupMsg = JSON.stringify({
             setup: {
-              model: "models/gemini-live-2.5-flash-native-audio",
+              model: "models/gemini-2.0-flash-live-001",
               generation_config: {
                 response_modalities: ["AUDIO"],
                 speech_config: {
