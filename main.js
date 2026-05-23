@@ -1,3 +1,54 @@
+async function getVertexToken(saJson) {
+  const sa = JSON.parse(saJson);
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+
+  const claim = btoa(JSON.stringify({
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/cloud-platform",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now
+  })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+
+  const sigInput = `${header}.${claim}`;
+
+  const pemKey = sa.private_key
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\n/g, "");
+
+  const keyBytes = Uint8Array.from(atob(pemKey), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8", keyBytes.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false, ["sign"]
+  );
+
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5", cryptoKey,
+    new TextEncoder().encode(sigInput)
+  );
+
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+
+  const jwt = `${sigInput}.${sigB64}`;
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+  });
+
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) throw new Error("Token failed: " + JSON.stringify(tokenData));
+  return tokenData.access_token;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const headers = {
@@ -11,117 +62,95 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
-    // ✅ WebSocket Live Call
     if (request.headers.get("Upgrade") === "websocket") {
       try {
-        const geminiKey = env.GEMINI_LIVE_KEY;
-        if (!geminiKey) return new Response("GEMINI_LIVE_KEY missing", { status: 400 });
+        const saJson = env.GOOGLE_SERVICE_ACCOUNT;
+        if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
 
-        const geminiLiveUrl = `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${geminiKey}`;
+        const accessToken = await getVertexToken(saJson);
+
+        const project = "tars-ai-chat-ann-assistant";
+        const location = "us-central1";
+        const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
-        let gcp = null;
-        let gcpReady = false;
-        const pendingQueue = [];
-
-        try {
-          const gcpRes = await fetch(geminiLiveUrl, {
-            headers: {
-              "Upgrade": "websocket",
-              "Connection": "Upgrade",
-            }
-          });
-
-          if (!gcpRes.webSocket) {
-            server.close(1011, "Gemini WS failed");
-            return new Response("Gemini WebSocket failed", { status: 500 });
+        const gcpRes = await fetch(vertexWsUrl, {
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Upgrade": "websocket",
+            "Connection": "Upgrade",
+            "x-goog-user-project": project
           }
+        });
 
-          gcp = gcpRes.webSocket;
-          gcp.accept();
-
-          // ✅ Worker خود setup message بھیجتا ہے — model force کرتا ہے
-          const setupMsg = JSON.stringify({
-            setup: {
-              model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
-              generation_config: {
-                response_modalities: ["AUDIO"],
-                speech_config: {
-                  voice_config: {
-                    prebuilt_voice_config: {
-                      voice_name: "Aoede"
-                    }
-                  }
-                }
-              },
-              system_instruction: {
-                parts: [{
-                  text: "You are TARS AI, a helpful multilingual assistant. Respond naturally in the language the user speaks. Be warm, concise, and helpful."
-                }]
-              }
-            }
-          });
-
-          gcp.send(setupMsg);
-          gcpReady = true;
-
-          // pending messages بھیجو
-          for (const msg of pendingQueue) {
-            try { gcp.send(msg); } catch {}
-          }
-
-          // client سے آنے والا سب Gemini کو forward کرو
-          server.addEventListener("message", (e) => {
-            if (!gcp || gcp.readyState !== 1) return;
-            try {
-              // setup message کو ignore کرو — Worker پہلے بھیج چکا ہے
-              const parsed = JSON.parse(e.data);
-              if (parsed?.setup) return;
-              gcp.send(e.data);
-            } catch {
-              try { gcp.send(e.data); } catch {}
-            }
-          });
-
-          // Gemini سے آنے والا سب client کو forward کرو
-          gcp.addEventListener("message", (e) => {
-            try { server.send(e.data); } catch {}
-          });
-
-          server.addEventListener("close", (e) => {
-            try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
-          });
-
-          gcp.addEventListener("close", (e) => {
-            try { server.close(e.code || 1000, e.reason || ""); } catch {}
-          });
-
-          gcp.addEventListener("error", () => {
-            try { server.close(1011, "Gemini error"); } catch {}
-          });
-
-        } catch (e) {
-          try { server.close(1011, e.message); } catch {}
-          return new Response(`WS setup failed: ${e.message}`, { status: 500 });
+        if (!gcpRes.webSocket) {
+          const errText = await gcpRes.text().catch(() => "no body");
+          server.close(1011, `Vertex WS failed: ${errText}`);
+          return new Response(`Vertex WS failed: ${errText}`, { status: 500 });
         }
+
+        const gcp = gcpRes.webSocket;
+        gcp.accept();
+
+        gcp.send(JSON.stringify({
+          setup: {
+            model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
+            generation_config: {
+              response_modalities: ["AUDIO"],
+              speech_config: {
+                voice_config: {
+                  prebuilt_voice_config: { voice_name: "Aoede" }
+                }
+              }
+            },
+            system_instruction: {
+              parts: [{ text: "You are TARS AI, a helpful multilingual assistant. Respond in the language the user speaks." }]
+            }
+          }
+        }));
+
+        server.addEventListener("message", (e) => {
+          if (gcp.readyState !== 1) return;
+          try {
+            const parsed = JSON.parse(e.data);
+            if (parsed?.setup) return;
+            gcp.send(e.data);
+          } catch {
+            try { gcp.send(e.data); } catch {}
+          }
+        });
+
+        gcp.addEventListener("message", (e) => {
+          try { server.send(e.data); } catch {}
+        });
+
+        server.addEventListener("close", (e) => {
+          try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
+        });
+
+        gcp.addEventListener("close", (e) => {
+          try { server.close(e.code || 1000, e.reason || ""); } catch {}
+        });
+
+        gcp.addEventListener("error", () => {
+          try { server.close(1011, "Vertex error"); } catch {}
+        });
 
         return new Response(null, { status: 101, webSocket: client });
 
       } catch (e) {
-        return new Response(`WebSocket Failed: ${e.message}`, { status: 500 });
+        return new Response(`Failed: ${e.message}`, { status: 500 });
       }
     }
 
-    // ✅ POST Text Chat - Vertex AI
     if (request.method === "POST") {
       try {
         const body = await request.json();
         const userMessage = body.message || "";
         const agentName = (body.agent || "asha").toLowerCase();
-
         const vertexKey = env.VERTEX_API_KEY;
         const ttsKey = env.TTS_API_KEY;
 
@@ -152,10 +181,7 @@ export default {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              role: "user",
-              parts: [{ text: `${systemInstruction}\n\nUser: ${userMessage}` }]
-            }]
+            contents: [{ role: "user", parts: [{ text: `${systemInstruction}\n\nUser: ${userMessage}` }] }]
           })
         });
 
