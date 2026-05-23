@@ -46,7 +46,7 @@ export default {
           // ✅ Worker خود setup message بھیجتا ہے — model force کرتا ہے
           const setupMsg = JSON.stringify({
             setup: {
-              model: "models/gemini-2.0-flash-live-001",
+              model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
               generation_config: {
                 response_modalities: ["AUDIO"],
                 speech_config: {
