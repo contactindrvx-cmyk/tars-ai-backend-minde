@@ -54,7 +54,7 @@ export default {
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, Upgrade",
       "Content-Type": "application/json"
     };
 
@@ -67,20 +67,17 @@ export default {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
         if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
 
-        // ✅ pehle token banao
         const accessToken = await getVertexToken(saJson);
 
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
         
-        // ✅ v1 endpoint — sahi hai
         const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
-        // ✅ Vertex AI se connect karo
         const gcpRes = await fetch(vertexWsUrl, {
           headers: {
             "Authorization": `Bearer ${accessToken}`,
@@ -91,15 +88,14 @@ export default {
         });
 
         if (!gcpRes.webSocket) {
-          const errText = await gcpRes.text().catch(() => "no body");
-          server.close(1011, `Vertex WS failed ${gcpRes.status}: ${errText.substring(0, 200)}`);
+          server.close(1011, "Vertex WS failed to connect");
           return new Response(null, { status: 101, webSocket: client });
         }
 
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // ✅ Setup message (Fixed CamelCase as required by Google)
+        // ✅ Setup message (Google Requires CamelCase here)
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
@@ -120,41 +116,42 @@ export default {
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
           
-          // Agar message string hai (JSON)
           if (typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
               if (parsed?.setup) return;
               gcp.send(e.data);
             } catch {
-              try { gcp.send(e.data); } catch {}
+              try {
+                const payload = {
+                  realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: e.data }] }
+                };
+                gcp.send(JSON.stringify(payload));
+              } catch {}
             }
-          } 
-          // Agar message raw audio binary/blob hai
-          else {
+          } else {
             try {
-              // 1. Audio ko Base64 mein convert karein
-              const buffer = new Uint8Array(e.data);
+              // 🔴 FAST CPU-FRIENDLY AUDIO CONVERSION (Prevents waitUntil Timeout)
+              const bytes = new Uint8Array(e.data);
               let binary = '';
-              for (let i = 0; i < buffer.byteLength; i++) {
-                binary += String.fromCharCode(buffer[i]);
+              const chunkSize = 8192;
+              for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
               }
               const base64Audio = btoa(binary);
 
-              // 2. Vertex AI ke JSON format mein pack karein
+              // 🔴 TELLING VERTEX IT'S PCM AUDIO
               const payload = {
                 realtimeInput: {
                   mediaChunks: [{
-                    mimeType: "audio/webm;codecs=opus", 
+                    mimeType: "audio/pcm;rate=16000", 
                     data: base64Audio
                   }]
                 }
               };
-              
-              // 3. Google ko bhejein
               gcp.send(JSON.stringify(payload));
             } catch (err) {
-              console.log("Audio conversion error:", err);
+              console.log("Audio logic error:", err);
             }
           }
         });
@@ -163,16 +160,13 @@ export default {
           try { server.send(e.data); } catch {}
         });
 
-        server.addEventListener("close", (e) => {
-          try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
+        // 🔴 SAFE DISCONNECT HANDLING
+        server.addEventListener("close", () => {
+          try { gcp.close(1000); } catch {}
         });
 
-        gcp.addEventListener("close", (e) => {
-          try { server.close(e.code || 1000, e.reason || ""); } catch {}
-        });
-
-        gcp.addEventListener("error", () => {
-          try { server.close(1011, "Vertex error"); } catch {}
+        gcp.addEventListener("close", () => {
+          try { server.close(1000); } catch {}
         });
 
         return new Response(null, { status: 101, webSocket: client });
@@ -181,11 +175,12 @@ export default {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
-        server.close(1011, e.message.substring(0, 100));
+        server.close(1011, "Catch Error");
         return new Response(null, { status: 101, webSocket: client });
       }
     }
 
+    // POST Code remains same...
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -264,4 +259,4 @@ export default {
     return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
   }
 };
-        
+                    
