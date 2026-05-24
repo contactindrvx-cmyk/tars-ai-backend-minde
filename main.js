@@ -63,87 +63,94 @@ export default {
     }
 
     if (request.headers.get("Upgrade") === "websocket") {
-      try {
-        const saJson = env.GOOGLE_SERVICE_ACCOUNT;
-        if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
 
-        const accessToken = await getVertexToken(saJson);
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      server.accept();
 
-        const project = "tars-ai-chat-ann-assistant";
-        const location = "us-central1";
-        const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;
-
-        const pair = new WebSocketPair();
-        const [client, server] = Object.values(pair);
-        server.accept();
-
-        const gcpRes = await fetch(vertexWsUrl, {
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Upgrade": "websocket",
-            "Connection": "Upgrade",
-            "x-goog-user-project": project
+      // ✅ ctx.waitUntil سے timeout نہیں ہوگا
+      ctx.waitUntil((async () => {
+        try {
+          const saJson = env.GOOGLE_SERVICE_ACCOUNT;
+          if (!saJson) {
+            server.close(1011, "GOOGLE_SERVICE_ACCOUNT missing");
+            return;
           }
-        });
 
-        if (!gcpRes.webSocket) {
-          const errText = await gcpRes.text().catch(() => "no body");
-          server.close(1011, `Vertex WS failed: ${errText}`);
-          return new Response(`Vertex WS failed: ${errText}`, { status: 500 });
-        }
+          const accessToken = await getVertexToken(saJson);
 
-        const gcp = gcpRes.webSocket;
-        gcp.accept();
+          const project = "tars-ai-chat-ann-assistant";
+          const location = "us-central1";
+          const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;
 
-        gcp.send(JSON.stringify({
-          setup: {
-            model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
-            generation_config: {
-              response_modalities: ["AUDIO"],
-              speech_config: {
-                voice_config: {
-                  prebuilt_voice_config: { voice_name: "Aoede" }
-                }
-              }
-            },
-            system_instruction: {
-              parts: [{ text: "You are TARS AI, a helpful multilingual assistant. Respond in the language the user speaks." }]
+          const gcpRes = await fetch(vertexWsUrl, {
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "Upgrade": "websocket",
+              "Connection": "Upgrade",
+              "x-goog-user-project": project
             }
+          });
+
+          if (!gcpRes.webSocket) {
+            const errText = await gcpRes.text().catch(() => "no body");
+            server.close(1011, `Vertex WS failed: ${errText}`);
+            return;
           }
-        }));
 
-        server.addEventListener("message", (e) => {
-          if (gcp.readyState !== 1) return;
-          try {
-            const parsed = JSON.parse(e.data);
-            if (parsed?.setup) return;
-            gcp.send(e.data);
-          } catch {
-            try { gcp.send(e.data); } catch {}
-          }
-        });
+          const gcp = gcpRes.webSocket;
+          gcp.accept();
 
-        gcp.addEventListener("message", (e) => {
-          try { server.send(e.data); } catch {}
-        });
+          gcp.send(JSON.stringify({
+            setup: {
+              model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
+              generation_config: {
+                response_modalities: ["AUDIO"],
+                speech_config: {
+                  voice_config: {
+                    prebuilt_voice_config: { voice_name: "Aoede" }
+                  }
+                }
+              },
+              system_instruction: {
+                parts: [{ text: "You are TARS AI, a helpful multilingual assistant. Respond in the language the user speaks." }]
+              }
+            }
+          }));
 
-        server.addEventListener("close", (e) => {
-          try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
-        });
+          server.addEventListener("message", (e) => {
+            if (gcp.readyState !== 1) return;
+            try {
+              const parsed = JSON.parse(e.data);
+              if (parsed?.setup) return;
+              gcp.send(e.data);
+            } catch {
+              try { gcp.send(e.data); } catch {}
+            }
+          });
 
-        gcp.addEventListener("close", (e) => {
-          try { server.close(e.code || 1000, e.reason || ""); } catch {}
-        });
+          gcp.addEventListener("message", (e) => {
+            try { server.send(e.data); } catch {}
+          });
 
-        gcp.addEventListener("error", () => {
-          try { server.close(1011, "Vertex error"); } catch {}
-        });
+          server.addEventListener("close", (e) => {
+            try { gcp.close(e.code || 1000, e.reason || ""); } catch {}
+          });
 
-        return new Response(null, { status: 101, webSocket: client });
+          gcp.addEventListener("close", (e) => {
+            try { server.close(e.code || 1000, e.reason || ""); } catch {}
+          });
 
-      } catch (e) {
-        return new Response(`Failed: ${e.message}`, { status: 500 });
-      }
+          gcp.addEventListener("error", () => {
+            try { server.close(1011, "Vertex error"); } catch {}
+          });
+
+        } catch (e) {
+          try { server.close(1011, e.message); } catch {}
+        }
+      })());
+
+      return new Response(null, { status: 101, webSocket: client });
     }
 
     if (request.method === "POST") {
@@ -224,4 +231,3 @@ export default {
     return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
   }
 };
-
