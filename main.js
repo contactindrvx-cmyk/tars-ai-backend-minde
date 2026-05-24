@@ -67,20 +67,20 @@ export default {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
         if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
 
-        // ✅ پہلے token بناؤ
+        // ✅ pehle token banao
         const accessToken = await getVertexToken(saJson);
 
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
         
-        // ✅ v1 endpoint — صحیح ہے
+        // ✅ v1 endpoint — sahi hai
         const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
 
-        // ✅ Vertex AI سے connect کرو
+        // ✅ Vertex AI se connect karo
         const gcpRes = await fetch(vertexWsUrl, {
           headers: {
             "Authorization": `Bearer ${accessToken}`,
@@ -99,19 +99,19 @@ export default {
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // ✅ Setup message
+        // ✅ Setup message (Fixed CamelCase as required by Google)
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
-            generation_config: {
-              response_modalities: ["AUDIO"],
-              speech_config: {
-                voice_config: {
-                  prebuilt_voice_config: { voice_name: "Aoede" }
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: "Aoede" }
                 }
               }
             },
-            system_instruction: {
+            systemInstruction: {
               parts: [{ text: "You are TARS AI, a helpful multilingual assistant. Respond in the language the user speaks." }]
             }
           }
@@ -119,12 +119,43 @@ export default {
 
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
-          try {
-            const parsed = JSON.parse(e.data);
-            if (parsed?.setup) return;
-            gcp.send(e.data);
-          } catch {
-            try { gcp.send(e.data); } catch {}
+          
+          // Agar message string hai (JSON)
+          if (typeof e.data === "string") {
+            try {
+              const parsed = JSON.parse(e.data);
+              if (parsed?.setup) return;
+              gcp.send(e.data);
+            } catch {
+              try { gcp.send(e.data); } catch {}
+            }
+          } 
+          // Agar message raw audio binary/blob hai
+          else {
+            try {
+              // 1. Audio ko Base64 mein convert karein
+              const buffer = new Uint8Array(e.data);
+              let binary = '';
+              for (let i = 0; i < buffer.byteLength; i++) {
+                binary += String.fromCharCode(buffer[i]);
+              }
+              const base64Audio = btoa(binary);
+
+              // 2. Vertex AI ke JSON format mein pack karein
+              const payload = {
+                realtimeInput: {
+                  mediaChunks: [{
+                    mimeType: "audio/webm;codecs=opus", 
+                    data: base64Audio
+                  }]
+                }
+              };
+              
+              // 3. Google ko bhejein
+              gcp.send(JSON.stringify(payload));
+            } catch (err) {
+              console.log("Audio conversion error:", err);
+            }
           }
         });
 
@@ -233,3 +264,4 @@ export default {
     return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
   }
 };
+        
