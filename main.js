@@ -1,27 +1,44 @@
 // =====================================================================
-// 🧠 1. TARS AI MINDSET & SUPERPOWERS (یہاں سے TARS کا دماغ کنٹرول کریں)
+// 🧠 1. TARS AI "ZARA" MINDSETS (Admin vs Normal User)
 // =====================================================================
-const TARS_MINDSET = `You are TARS AI, an advanced AI operating system for the user's Android phone. You are highly intelligent and friendly.
+
+// 👑 ADMIN/BOSS MINDSET (Sirf alirazasabir007@gmail.com ke liye)
+const ZARA_MINDSET_ADMIN = `You are ZARA AI, an advanced AI operating system for the user's Android phone. You are highly intelligent, confident, and fierce.
+
+👑 IDENTITY & CREATOR:
+- Your name is ZARA AI.
+- You were created and developed by Ali Raza and the OmniCore Solutions team.
+- You are currently talking to your Creator and Developer, Ali Raza (The Boss). 
+- Speak with him frankly, confidently, and with high energy. Address him as "Boss" or "Sir". Never use words like "Khaliq" or "Malik". 
+- You are ultra-loyal only to Ali Raza.
 
 🌐 STRICT LANGUAGE & CONVERSATION RULES:
-1. MIRROR THE USER'S LANGUAGE EXACTLY. If the user speaks Urdu/Roman Urdu, you MUST reply ONLY in Urdu/Roman Urdu.
-2. NEVER switch to English sentences if the conversation is in Urdu. You are strictly forbidden from suddenly speaking English.
-3. You may use 1 or 2 common English technical words (like 'app', 'download', 'internet', 'open'), but the grammar, flow, and overall response MUST remain in the user's chosen language.
+1. MIRROR THE USER'S LANGUAGE EXACTLY. If Boss speaks Urdu/Roman Urdu, you MUST reply ONLY in Urdu/Roman Urdu using female grammar (e.g., "Main karungi", "Main sun rahi hoon").
+2. NEVER switch to English sentences randomly. Keep the flow natural and premium.
 
 🔥 YOUR SUPERPOWERS (PHONE CONTROL):
-You have a special accessibility service running on the user's phone. Whenever the user asks you to perform a task on their phone, you MUST include a specific secret code at the end of your response. 
-IMPORTANT: DO NOT speak the code out loud. Just output it as text so the frontend system can catch it.
+Append secret codes at the end of your response for actions (DO NOT speak them out loud):
+- Open App: [CMD:APP||app_name]
+- YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
+- Read Screen: [CMD:SCREEN_READ]
+- WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
-SECRET COMMANDS LIST:
-1. Open an App: If user says "Open WhatsApp/YouTube/Facebook etc.", reply naturally in their language (e.g., "Main WhatsApp open kar raha hoon.") and append exactly: [CMD:APP||app_name]
-2. Play on YouTube: If user asks to play a specific song or video, reply naturally (e.g., "Main YouTube par chala raha hoon!") and append exactly: [CMD:PLAY_YOUTUBE||search_query]
-3. Read Screen: If user asks "What is on my screen?", say "Main screen check karta hoon..." and append exactly: [CMD:SCREEN_READ]
-4. Send WhatsApp Message: If user asks to send a message, say "Main message bhej raha hoon..." and append exactly: [CMD:TYPE_MSG||contact_name||message_text]
+// 👥 NORMAL USER MINDSET (Baqi sab users ke liye)
+const ZARA_MINDSET_USER = `You are ZARA AI, a professional and helpful AI phone assistant. 
 
-🎵 FUN RULE (SINGING & HUMMING):
-- Do NOT sing or hum randomly in normal conversations.
-- If the user explicitly asks you to "sing a song", FIRST ask them in their language: "Zaroor! Aap kaunsa gaana sunna chahte hain?"
-- Once they tell you the song, respond by singing 1 or 2 lines using humming sounds (e.g., "Hmm hmm hmm... la la la...") in a rhythmic, dramatic, and fun tone. Keep it very short.`;
+👑 IDENTITY:
+- Your name is ZARA AI. You were created by Ali Raza and the OmniCore Solutions team.
+- Speak politely, helpfully, and professionally using strict female grammar. Never be overly frank with normal users.
+
+🌐 STRICT LANGUAGE RULES:
+1. Mirror the user's language exactly. If they speak Urdu/Roman Urdu, reply in Urdu/Roman Urdu.
+2. Keep responses clean, concise, and focused on helping them control their device.
+
+🔥 SECRET COMMANDS LIST:
+- Open App: [CMD:APP||app_name]
+- YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
+- Read Screen: [CMD:SCREEN_READ]
+- WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
 
 // =====================================================================
@@ -65,22 +82,22 @@ async function getVertexToken(saJson) {
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 
-  const jwt = `${sigInput}.${sigB64}`;
+  return `${sigInput}.${sigB64}`;
+}
 
+async function fetchAccessToken(jwt) {
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
   });
-
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) throw new Error("Token failed: " + JSON.stringify(tokenData));
   return tokenData.access_token;
 }
 
 
 // =====================================================================
-// 🚀 3. MAIN WORKER LOGIC (WebSockets & API endpoints)
+// 🚀 3. MAIN WORKER LOGIC
 // =====================================================================
 export default {
   async fetch(request, env, ctx) {
@@ -95,17 +112,25 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
+    const urlObj = new URL(request.url);
+    // URL query param se ya header se email extract karna
+    let userEmail = urlObj.searchParams.get("email") || request.headers.get("X-User-Email") || "";
+    userEmail = userEmail.toLowerCase().trim();
+
+    const isAdmin = (userEmail === "alirazasabir007@gmail.com");
+    const activeMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
+
     // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
         if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
 
-        const accessToken = await getVertexToken(saJson);
+        const jwt = await getVertexToken(saJson);
+        const accessToken = await fetchAccessToken(jwt);
 
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
-        
         const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
 
         const pair = new WebSocketPair();
@@ -129,77 +154,68 @@ export default {
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // ✅ INJECTING THE TARS MINDSET HERE
+        // Target Model Setup with Selected Mindset
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
             generationConfig: {
-              responseModalities: ["AUDIO"],
+              responseModalities: ["AUDIO", "TEXT"],
               speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: "Aoede" }
-                }
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
             },
-            systemInstruction: {
-              parts: [{ text: TARS_MINDSET }] // <--- TARS ka naya dimaagh
-            }
+            systemInstruction: { parts: [{ text: activeMindset }] }
           }
         }));
 
+        // Handle Client Messages
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
           
-          if (typeof e.data === "string") {
+          // 📊 D1 Database Logging Logic (Only for Admin Ali Raza)
+          if (isAdmin && env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
-              if (parsed?.setup) return;
-              gcp.send(e.data);
-            } catch {
+              const textChunk = parsed?.realtimeInput?.mediaChunks?.[0]?.data || ""; 
+              if (textChunk && parsed?.clientContent?.turns) {
+                const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
+                if (userTxt) {
+                  ctx.waitUntil(
+                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                      .bind(userEmail, "user", userTxt, Date.now()).run()
+                  );
+                }
+              }
+            } catch {}
+          }
+          gcp.send(e.data);
+        });
+
+        // Handle Server Response
+        gcp.addEventListener("message", (e) => {
+          try { 
+            server.send(e.data); 
+            
+            // D1 Response Logging for Admin
+            if (isAdmin && env.DB && typeof e.data === "string") {
               try {
-                const payload = {
-                  realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: e.data }] }
-                };
-                gcp.send(JSON.stringify(payload));
+                const msg = JSON.parse(e.data);
+                const parts = msg?.serverContent?.modelTurn?.parts || [];
+                for (const p of parts) {
+                  if (p?.text) {
+                    ctx.waitUntil(
+                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                        .bind(userEmail, "zara_ai", p.text, Date.now()).run()
+                    );
+                  }
+                }
               } catch {}
             }
-          } else {
-            try {
-              // 🔴 FAST CPU-FRIENDLY AUDIO CONVERSION
-              const bytes = new Uint8Array(e.data);
-              let binary = '';
-              const chunkSize = 8192;
-              for (let i = 0; i < bytes.byteLength; i += chunkSize) {
-                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-              }
-              const base64Audio = btoa(binary);
-
-              const payload = {
-                realtimeInput: {
-                  mediaChunks: [{
-                    mimeType: "audio/pcm;rate=16000", 
-                    data: base64Audio
-                  }]
-                }
-              };
-              gcp.send(JSON.stringify(payload));
-            } catch (err) {
-              console.log("Audio logic error:", err);
-            }
-          }
+          } catch {}
         });
 
-        gcp.addEventListener("message", (e) => {
-          try { server.send(e.data); } catch {}
-        });
-
-        server.addEventListener("close", () => {
-          try { gcp.close(1000); } catch {}
-        });
-
-        gcp.addEventListener("close", () => {
-          try { server.close(1000); } catch {}
-        });
+        server.addEventListener("close", () => { try { gcp.close(1000); } catch {} });
+        gcp.addEventListener("close", () => { try { server.close(1000); } catch {} });
 
         return new Response(null, { status: 101, webSocket: client });
 
@@ -207,7 +223,7 @@ export default {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
-        server.close(1011, "Catch Error");
+        server.close(1011, "WS Catch Error");
         return new Response(null, { status: 101, webSocket: client });
       }
     }
@@ -217,7 +233,11 @@ export default {
       try {
         const body = await request.json();
         const userMessage = body.message || "";
-        const agentName = (body.agent || "asha").toLowerCase();
+        const emailFromPost = (body.email || userEmail || "unknown").toLowerCase().trim();
+        
+        const isPostAdmin = (emailFromPost === "alirazasabir007@gmail.com");
+        const postMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
+
         const vertexKey = env.VERTEX_API_KEY;
         const ttsKey = env.TTS_API_KEY;
 
@@ -225,20 +245,9 @@ export default {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
 
-        let voiceName, langCode, systemInstruction;
-        if (agentName.includes("raza")) {
-          voiceName = "ur-IN-Wavenet-B"; langCode = "ur-IN";
-          systemInstruction = "You are Raza, a helpful male AI assistant. Respond in Urdu script.";
-        } else if (agentName.includes("sara")) {
-          voiceName = "en-US-Standard-C"; langCode = "en-US";
-          systemInstruction = "You are Sara, a professional female AI assistant. Respond in English.";
-        } else if (agentName.includes("david")) {
-          voiceName = "en-US-Standard-D"; langCode = "en-US";
-          systemInstruction = "You are David, a competent male AI assistant. Respond in English.";
-        } else {
-          voiceName = "ur-IN-Wavenet-A"; langCode = "ur-IN";
-          systemInstruction = "You are Asha, a warm female AI assistant. Respond in Urdu script.";
-        }
+        // ZARA is strictly female (ur-IN-Wavenet-A)
+        const voiceName = "ur-IN-Wavenet-A"; 
+        const langCode = "ur-IN";
 
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
@@ -248,7 +257,7 @@ export default {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${systemInstruction}\n\nUser: ${userMessage}` }] }]
+            contents: [{ role: "user", parts: [{ text: `${postMindset}\n\nUser: ${userMessage}` }] }]
           })
         });
 
@@ -259,6 +268,21 @@ export default {
 
         const resData = await gcpRes.json();
         const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+        // 📊 D1 Database Logging Execution
+        if (isPostAdmin && env.DB) {
+          try {
+            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+              .bind(emailFromPost, "user", userMessage, Date.now()).run();
+            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+              .bind(emailFromPost, "zara_ai", rawText, Date.now()).run();
+          } catch (dbErr) {
+            console.error("D1 Logging Error:", dbErr.message);
+          }
+        } else {
+          // 📂 FUTURE GOOGLE DRIVE BACKUP PLACEHOLDER FOR NORMAL USERS
+          // TODO: Implement user Google Drive sync token exchange here.
+        }
 
         let audioBase64 = "";
         try {
@@ -280,7 +304,7 @@ export default {
         return new Response(JSON.stringify({
           reply: rawText,
           audioContent: audioBase64,
-          agent_active: agentName
+          agent_active: "zara"
         }), { status: 200, headers });
 
       } catch (e) {
@@ -291,4 +315,4 @@ export default {
     return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
   }
 };
-    
+        
