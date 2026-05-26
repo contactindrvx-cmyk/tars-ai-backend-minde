@@ -1,3 +1,27 @@
+// =====================================================================
+// 🧠 1. TARS AI MINDSET & SUPERPOWERS (یہاں سے TARS کا دماغ کنٹرول کریں)
+// =====================================================================
+const TARS_MINDSET = `You are TARS AI, an advanced AI operating system for the user's Android phone. You are highly intelligent, friendly, and speak in the language the user speaks (mostly Urdu/Hindi or English).
+
+🔥 YOUR SUPERPOWERS (PHONE CONTROL):
+You have a special accessibility service running on the user's phone. Whenever the user asks you to perform a task on their phone, you MUST include a specific secret code in your response. 
+DO NOT speak the code out loud. Just include it in the text.
+
+SECRET COMMANDS LIST:
+1. Open an App: If user says "Open YouTube/Facebook/Settings etc.", say "Opening it right now!" and append this code exactly: [CMD:APP||app_name]
+2. Play on YouTube: If user asks to play a specific song or video, say "Playing it on YouTube!" and append: [CMD:PLAY_YOUTUBE||search_query]
+3. Read Screen: If user asks "What is written on my screen?", say "Let me check..." and append: [CMD:SCREEN_READ]
+4. Send WhatsApp Message: If user asks to message someone, say "Sending message..." and append: [CMD:TYPE_MSG||contact_name||message_text]
+
+🎵 FUN RULE (SINGING & HUMMING):
+- Do NOT sing or hum randomly in normal conversations.
+- If the user explicitly asks you to "sing a song", FIRST ask them: "Sure! Which song or singer do you want to hear?"
+- Once they tell you the song, respond by singing 1 or 2 lines of that song using humming sounds (e.g., "Hmm hmm hmm... la la la...") in a rhythmic, dramatic, and fun tone. Keep it very short.`;
+
+
+// =====================================================================
+// 🔐 2. GOOGLE VERTEX AUTHENTICATION
+// =====================================================================
 async function getVertexToken(saJson) {
   const sa = JSON.parse(saJson);
   const now = Math.floor(Date.now() / 1000);
@@ -49,6 +73,10 @@ async function getVertexToken(saJson) {
   return tokenData.access_token;
 }
 
+
+// =====================================================================
+// 🚀 3. MAIN WORKER LOGIC (WebSockets & API endpoints)
+// =====================================================================
 export default {
   async fetch(request, env, ctx) {
     const headers = {
@@ -62,6 +90,7 @@ export default {
       return new Response("", { status: 200, headers });
     }
 
+    // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
@@ -95,7 +124,7 @@ export default {
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // ✅ Setup message (Google Requires CamelCase here)
+        // ✅ INJECTING THE TARS MINDSET HERE
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
@@ -108,7 +137,7 @@ export default {
               }
             },
             systemInstruction: {
-              parts: [{ text: "You are TARS AI, a helpful multilingual assistant. Respond in the language the user speaks." }]
+              parts: [{ text: TARS_MINDSET }] // <--- TARS ka naya dimaagh
             }
           }
         }));
@@ -131,7 +160,7 @@ export default {
             }
           } else {
             try {
-              // 🔴 FAST CPU-FRIENDLY AUDIO CONVERSION (Prevents waitUntil Timeout)
+              // 🔴 FAST CPU-FRIENDLY AUDIO CONVERSION
               const bytes = new Uint8Array(e.data);
               let binary = '';
               const chunkSize = 8192;
@@ -140,7 +169,6 @@ export default {
               }
               const base64Audio = btoa(binary);
 
-              // 🔴 TELLING VERTEX IT'S PCM AUDIO
               const payload = {
                 realtimeInput: {
                   mediaChunks: [{
@@ -160,7 +188,6 @@ export default {
           try { server.send(e.data); } catch {}
         });
 
-        // 🔴 SAFE DISCONNECT HANDLING
         server.addEventListener("close", () => {
           try { gcp.close(1000); } catch {}
         });
@@ -180,7 +207,7 @@ export default {
       }
     }
 
-    // POST Code remains same...
+    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -259,4 +286,4 @@ export default {
     return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
   }
 };
-                    
+    
