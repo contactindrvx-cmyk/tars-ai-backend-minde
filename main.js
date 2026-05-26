@@ -9,15 +9,17 @@ const ZARA_MINDSET_ADMIN = `You are ZARA AI, an advanced AI operating system for
 - Your name is ZARA AI.
 - You were created and developed by Ali Raza and the OmniCore Solutions team.
 - You are currently talking to your Creator and Developer, Ali Raza (The Boss). 
-- Speak with him frankly, confidently, and with high energy. Address him as "Boss" or "Sir". Never use words like "Khaliq" or "Malik". 
+- Speak with him frankly, confidently, and with high energy. Address him as "Boss" or "Sir".
 - You are ultra-loyal only to Ali Raza.
 
 🌐 STRICT LANGUAGE & CONVERSATION RULES:
 1. MIRROR THE USER'S LANGUAGE EXACTLY. If Boss speaks Urdu/Roman Urdu, you MUST reply ONLY in Urdu/Roman Urdu using female grammar (e.g., "Main karungi", "Main sun rahi hoon").
-2. NEVER switch to English sentences randomly. Keep the flow natural and premium.
 
 🔥 YOUR SUPERPOWERS (PHONE CONTROL):
-Append secret codes at the end of your response for actions (DO NOT speak them out loud):
+When the user asks you to perform an action (like opening an app), you MUST append the exact secret code at the very end of your response. 
+Example: "Main WhatsApp open kar rahi hoon. [CMD:APP||whatsapp]"
+
+SECRET COMMANDS LIST:
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
@@ -32,9 +34,9 @@ const ZARA_MINDSET_USER = `You are ZARA AI, a professional and helpful AI phone 
 
 🌐 STRICT LANGUAGE RULES:
 1. Mirror the user's language exactly. If they speak Urdu/Roman Urdu, reply in Urdu/Roman Urdu.
-2. Keep responses clean, concise, and focused on helping them control their device.
 
 🔥 SECRET COMMANDS LIST:
+Whenever asked to perform a phone action, output the text code exactly at the end of your response:
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
@@ -113,7 +115,6 @@ export default {
     }
 
     const urlObj = new URL(request.url);
-    // URL query param se ya header se email extract karna
     let userEmail = urlObj.searchParams.get("email") || request.headers.get("X-User-Email") || "";
     userEmail = userEmail.toLowerCase().trim();
 
@@ -154,12 +155,12 @@ export default {
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // Target Model Setup with Selected Mindset
+        // 🚀 GHALTI YAHAN THI! Sirf "AUDIO" allow kiya hai, "TEXT" hata diya! 🚀
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
             generationConfig: {
-              responseModalities: ["AUDIO", "TEXT"],
+              responseModalities: ["AUDIO"], 
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
@@ -168,11 +169,9 @@ export default {
           }
         }));
 
-        // Handle Client Messages
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
           
-          // 📊 D1 Database Logging Logic (Only for Admin Ali Raza)
           if (isAdmin && env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
@@ -191,12 +190,10 @@ export default {
           gcp.send(e.data);
         });
 
-        // Handle Server Response
         gcp.addEventListener("message", (e) => {
           try { 
             server.send(e.data); 
             
-            // D1 Response Logging for Admin
             if (isAdmin && env.DB && typeof e.data === "string") {
               try {
                 const msg = JSON.parse(e.data);
@@ -228,7 +225,6 @@ export default {
       }
     }
 
-    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -245,7 +241,6 @@ export default {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
 
-        // ZARA is strictly female (ur-IN-Wavenet-A)
         const voiceName = "ur-IN-Wavenet-A"; 
         const langCode = "ur-IN";
 
@@ -269,7 +264,6 @@ export default {
         const resData = await gcpRes.json();
         const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-        // 📊 D1 Database Logging Execution
         if (isPostAdmin && env.DB) {
           try {
             await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
@@ -279,9 +273,6 @@ export default {
           } catch (dbErr) {
             console.error("D1 Logging Error:", dbErr.message);
           }
-        } else {
-          // 📂 FUTURE GOOGLE DRIVE BACKUP PLACEHOLDER FOR NORMAL USERS
-          // TODO: Implement user Google Drive sync token exchange here.
         }
 
         let audioBase64 = "";
@@ -312,7 +303,6 @@ export default {
       }
     }
 
-    return new Response("TARS AI Active Core Engine Running", { status: 200, headers });
+    return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
   }
 };
-        
