@@ -285,7 +285,7 @@ export default {
           } catch (dbErr) {}
         }
 
-        // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا 🚀
+                // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا (یہ بالکل ٹھیک کام کر رہا ہے) 🚀
         const cleanTextForSpeech = rawText.replace(/\[CMD:[^\]]*\]/g, "").trim();
 
         let audioBase64 = "";
@@ -294,12 +294,12 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: cleanTextForSpeech }, // 👈 یہاں صرف صاف اردو جائے گی، کمانڈ نہیں!
-              voice: { languageCode: "ur-PK", name: "ur-PK-Wavenet-A" }, // 👈 پاکستانی وائس ماڈل
+              input: { text: cleanTextForSpeech },
+              // 🚀 جادو 2: واپس سب سے بہترین اور نرم آواز (ur-IN-Wavenet-A) لگا دی گئی ہے 🚀
+              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" }, 
               audioConfig: { 
-                audioEncoding: "MP3",
-                pitch: -1.5,         // 🚀 جادو 2: آواز کا بھاری پن تھوڑا سیٹ کیا تاکہ قدرتی لگے
-                speakingRate: 1.05   // 🚀 سپیڈ تھوڑی سی تیز کی تاکہ روبوٹک انداز ختم ہو
+                audioEncoding: "MP3"
+                // یہاں سے میں نے پچ اور سپیڈ کی چھیڑ چھاڑ مکمل ختم کر دی ہے تاکہ آواز 100% اصلی رہے
               }
             })
           });
@@ -308,6 +308,7 @@ export default {
             audioBase64 = ttsData.audioContent || "";
           }
         } catch {}
+        
 
         return new Response(JSON.stringify({
           reply: rawText, // چیٹ میں بھیجنے کے لئے اصلی میسج (تاکہ React میں کمانڈ چل سکے)
