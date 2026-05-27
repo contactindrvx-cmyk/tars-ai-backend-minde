@@ -51,7 +51,6 @@ Whenever asked to perform a phone action, output the text code exactly at the en
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
 
-
 // =====================================================================
 // 🔐 2. GOOGLE VERTEX AUTHENTICATION
 // =====================================================================
@@ -59,39 +58,24 @@ async function getVertexToken(saJson) {
   const sa = JSON.parse(saJson);
   const now = Math.floor(Date.now() / 1000);
 
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-
+  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
   const claim = btoa(JSON.stringify({
     iss: sa.client_email,
     scope: "https://www.googleapis.com/auth/cloud-platform",
     aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now
+    exp: now + 3600, iat: now
   })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 
   const sigInput = `${header}.${claim}`;
-
-  const pemKey = sa.private_key
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\n/g, "");
-
+  const pemKey = sa.private_key.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\n/g, "");
   const keyBytes = Uint8Array.from(atob(pemKey), c => c.charCodeAt(0));
 
   const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8", keyBytes.buffer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false, ["sign"]
+    "pkcs8", keyBytes.buffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
   );
 
-  const sig = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5", cryptoKey,
-    new TextEncoder().encode(sigInput)
-  );
-
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 
   return `${sigInput}.${sigB64}`;
 }
@@ -106,6 +90,24 @@ async function fetchAccessToken(jwt) {
   return tokenData.access_token;
 }
 
+// 🚀 NAYA JADOO: D1 DATABASE SE PICHLI MEMORY NIKALNE WALA FUNCTION 🚀
+async function getRecentMemory(env, email, limit = 15) {
+  if (!env.DB) return "";
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT role, text FROM conversations WHERE email = ? ORDER BY timestamp DESC LIMIT ?"
+    ).bind(email, limit).all();
+    
+    if (!results || results.length === 0) return "";
+    
+    // Reverse taake purani baat pehly aye aur nayi baad mein
+    const history = results.reverse().map(r => `${r.role === 'user' ? 'User/Boss' : 'ZARA'}: ${r.text}`).join("\n");
+    return `\n\n[PAST MEMORY CONTEXT - FOR YOUR AWARENESS ONLY]\n${history}\n[END MEMORY]\n`;
+  } catch (e) {
+    console.error("Memory Fetch Error:", e);
+    return "";
+  }
+}
 
 // =====================================================================
 // 🚀 3. MAIN WORKER LOGIC
@@ -128,7 +130,7 @@ export default {
     userEmail = userEmail.toLowerCase().trim();
 
     const isAdmin = (userEmail === "alirazasabir007@gmail.com");
-    const activeMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
+    const baseMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
 
     // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
@@ -138,6 +140,10 @@ export default {
 
         const jwt = await getVertexToken(saJson);
         const accessToken = await fetchAccessToken(jwt);
+
+        // 🧠 Memory Inject for Live Call (Zero Delay because it happens during setup)
+        const memoryContext = await getRecentMemory(env, userEmail);
+        const finalMindset = baseMindset + memoryContext;
 
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
@@ -164,7 +170,6 @@ export default {
         const gcp = gcpRes.webSocket;
         gcp.accept();
 
-        // 🚀 GHALTI YAHAN THI! Sirf "AUDIO" allow kiya hai, "TEXT" hata diya! 🚀
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
@@ -174,7 +179,7 @@ export default {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
             },
-            systemInstruction: { parts: [{ text: activeMindset }] }
+            systemInstruction: { parts: [{ text: finalMindset }] }
           }
         }));
 
@@ -234,6 +239,7 @@ export default {
       }
     }
 
+    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -241,7 +247,11 @@ export default {
         const emailFromPost = (body.email || userEmail || "unknown").toLowerCase().trim();
         
         const isPostAdmin = (emailFromPost === "alirazasabir007@gmail.com");
-        const postMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
+        const basePostMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
+
+        // 🧠 Memory Inject for Text Chat
+        const memoryContext = await getRecentMemory(env, emailFromPost);
+        const finalPostMindset = basePostMindset + memoryContext;
 
         const vertexKey = env.VERTEX_API_KEY;
         const ttsKey = env.TTS_API_KEY;
@@ -261,7 +271,7 @@ export default {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${postMindset}\n\nUser: ${userMessage}` }] }]
+            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }]
           })
         });
 
@@ -315,3 +325,4 @@ export default {
     return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
   }
 };
+      
