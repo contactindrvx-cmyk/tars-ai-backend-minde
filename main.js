@@ -239,7 +239,7 @@ export default {
       }
     }
 
-                // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+                    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -285,8 +285,9 @@ export default {
           } catch (dbErr) {}
         }
 
-                        // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا 🚀
-        const cleanTextForSpeech = rawText.replace(/\[CMD:[^\]]*\]/g, "").trim();
+        // 🚀 THE ULTIMATE FIX: جیسے ہی "CMD" کا لفظ آئے، اس سے آگے کی ساری بکواس کاٹ کر پھینک دو! 🚀
+        // اس سے TTS کے پاس کبھی کمانڈ کا ایک حرف بھی نہیں جائے گا۔
+        const cleanTextForSpeech = rawText.split(/\[?CMD/i)[0].trim();
 
         let audioBase64 = "";
         try {
@@ -294,12 +295,9 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: cleanTextForSpeech }, // 👈 کمانڈ کے بغیر صاف اردو
-              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" }, // 👈 بہترین اوریجنل آواز
-              audioConfig: { 
-                audioEncoding: "MP3"
-                // 🚀 پچ اور سپیڈ یہاں سے مکمل اڑا دی گئی ہے تاکہ 100% نیچرل آواز آئے 🚀
-              }
+              input: { text: cleanTextForSpeech }, // 👈 اب اس میں 100% صرف اور صرف نیچرل اردو ہوگی
+              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" },
+              audioConfig: { audioEncoding: "MP3" }
             })
           });
           if (ttsRes.ok) {
@@ -307,11 +305,9 @@ export default {
             audioBase64 = ttsData.audioContent || "";
           }
         } catch {}
-        
-        
 
         return new Response(JSON.stringify({
-          reply: rawText, // چیٹ میں بھیجنے کے لئے اصلی میسج (تاکہ React میں کمانڈ چل سکے)
+          reply: rawText, 
           audioContent: audioBase64,
           agent_active: "zara"
         }), { status: 200, headers });
@@ -319,5 +315,5 @@ export default {
       } catch (e) {
         return new Response(JSON.stringify({ reply: `Server Error: ${e.message}` }), { status: 200, headers });
       }
-    }
-    
+                                              }
+          
