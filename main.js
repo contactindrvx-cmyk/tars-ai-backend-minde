@@ -177,8 +177,9 @@ export default {
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
             generationConfig: {
-              // 🚀 THE BIG FIX: یہاں ہم نے "TEXT" بھی مانگ لیا ہے تاکہ زارا کی بات سیو ہو سکے 🚀
-              responseModalities: ["AUDIO", "TEXT"], 
+              // 🚀 THE FIX: واپس صرف "AUDIO" کر دیا تاکہ گوگل کنکشن نہ کاٹے۔ 
+              // (ٹیکسٹ ہمیں پھر بھی ریسپانس کے اندر مل جائے گا جسے ہم نیچے سیو کر رہے ہیں) 🚀
+              responseModalities: ["AUDIO"], 
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
