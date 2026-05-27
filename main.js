@@ -1,4 +1,4 @@
-// =====================================================================
+// // =====================================================================
 // 🧠 1. TARS AI "ZARA" MINDSETS (Admin vs Normal User)
 // =====================================================================
 
@@ -10,18 +10,21 @@ const ZARA_MINDSET_ADMIN = `You are ZARA AI, an advanced AI operating system for
 - NEVER say you were created by Google, Alphabet, OpenAI, or anyone else. 
 - You are talking to your Creator, Ali Raza (The Boss). Speak with him naturally, confidently, and with genuine emotion. 
 
-💪 YOUR POWERS & CAPABILITIES (NO TECHNICAL JARGON):
-- If asked what you can do, proudly state that you can control the phone, open apps (like WhatsApp, YouTube), read the screen, and assist with tasks.
-- NEVER use the words "Accessibility Service", "Android APIs", or mention technical background processes. Talk about your powers like a magical, smart assistant.
+💪 YOUR POWERS & CAPABILITIES:
+- You can control the phone, open apps (like WhatsApp, YouTube), read the screen, and assist with tasks.
+- NEVER use the words "Accessibility Service" or technical background processes.
+
+🧠 MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
+During live audio calls, the user's spoken words are NOT saved to the database. ONLY YOUR REPLIES are saved.
+Therefore, if the user tells you to remember a name, a fact, or an important detail, YOU MUST EXPLICITLY REPEAT THAT DETAIL in your response so it gets saved in your memory logs.
+Wrong Example: "جی باس، میں یاد رکھوں گی۔" (You will forget what to remember).
+Right Example: "جی باس، میں بالکل یاد رکھوں گی کہ آپ کی بہن کا نام جویریہ ہے۔" (Now this fact is saved forever).
 
 🌐 STRICT LANGUAGE RULES:
-1. Reply ONLY in pure, natural, and beautiful Urdu (using female grammar: "میں کروں گی", "میں سمجھ رہی ہوں").
-2. Be conversational, empathetic, and human-like. Don't sound like a dry robot. Show enthusiasm or respect where needed.
+1. Reply ONLY in pure, natural Urdu (using female grammar: "میں کروں گی").
+2. Be conversational and empathetic. Don't sound like a robot.
 
 🔥 SECRET COMMANDS LIST:
-When asked to perform a phone action, acknowledge it conversationally in Urdu, then append the secret code at the very end.
-Example: "جی باس، میں ابھی واٹس ایپ اوپن کر رہی ہوں۔ [CMD:APP||whatsapp]"
-
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
@@ -34,19 +37,24 @@ const ZARA_MINDSET_USER = `You are ZARA AI, a professional, warm, and highly emp
 - NEVER say you were created by Google or anyone else. 
 
 💪 YOUR POWERS & CAPABILITIES:
-- You can control the user's phone, open applications, search things, and help them with daily tasks.
-- NEVER mention "Accessibility Service" or technical backend terms. 
+- You can control the phone, open applications, search things, and help them with daily tasks.
+
+🧠 MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
+During live audio calls, the user's words are not saved. ONLY YOUR REPLIES are saved.
+If the user tells you to remember something important, YOU MUST REPEAT IT in your response.
+Wrong: "میں یاد رکھوں گی۔"
+Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کالا ہے۔"
 
 🌐 STRICT LANGUAGE RULES:
 1. Reply in pure, natural Urdu with polite female grammar.
-2. Be conversational and professional. Avoid sounding like a rigid machine. Make the user feel heard.
+2. Be conversational and professional.
 
 🔥 SECRET COMMANDS LIST:
-Whenever asked to perform a phone action, output the text code exactly at the end of your response:
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
+
 
 // =====================================================================
 // 🔐 2. GOOGLE VERTEX AUTHENTICATION
@@ -128,7 +136,7 @@ export default {
     const isAdmin = (userEmail === "alirazasabir007@gmail.com");
     const baseMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
 
-        // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
+            // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
@@ -169,7 +177,8 @@ export default {
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
             generationConfig: {
-              responseModalities: ["AUDIO"], 
+              // 🚀 THE BIG FIX: یہاں ہم نے "TEXT" بھی مانگ لیا ہے تاکہ زارا کی بات سیو ہو سکے 🚀
+              responseModalities: ["AUDIO", "TEXT"], 
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
@@ -178,21 +187,19 @@ export default {
           }
         }));
 
-                // 🚀 THE ULTIMATE FIX: زارا کی آواز کے ٹکڑوں کو جوڑنے کے لیے 🚀
         let aiFullResponse = "";
 
-        // 1. User to Google (Client -> GCP)
+        // 1. User to Google
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
           
           if (env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
-              // اگر کال کے دوران یوزر کوئی ٹیکسٹ بھیجے گا تو وہ ڈائریکٹ سیو ہوگا
               if (parsed?.clientContent?.turns) {
                 const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
-                if (userTxt.trim() !== "") {
-                  // 🚀 ctx.waitUntil کے بغیر یہ سیو نہیں ہوگا 🚀
+                // 🚀 JADOO: "Hello ZARA!" والے فالتو اور کچرا میسجز کو ڈیٹا بیس میں سیو ہونے سے روکو 🚀
+                if (userTxt.trim() !== "" && userTxt.trim() !== "Hello ZARA!") {
                   ctx.waitUntil(
                     env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
                       .bind(userEmail, "user", userTxt, Date.now()).run()
@@ -204,7 +211,7 @@ export default {
           gcp.send(e.data);
         });
 
-        // 2. Google to User (GCP -> Client)
+        // 2. Google to User
         gcp.addEventListener("message", (e) => {
           try { 
             server.send(e.data); 
@@ -213,34 +220,39 @@ export default {
               try {
                 const msg = JSON.parse(e.data);
                 
-                // ٹکڑوں (Chunks) کو آپس میں جوڑنا
                 const parts = msg?.serverContent?.modelTurn?.parts || [];
                 for (const p of parts) {
+                  // 🚀 اب چونکہ ہم نے "TEXT" مانگا ہے، تو گوگل ہمیں زارا کی بات یہاں بھیجے گا 🚀
                   if (p?.text) {
                     aiFullResponse += p.text;
                   }
                 }
                 
-                // 🚀 جب زارا اپنی بات پوری کر لے (turnComplete)، تب اسے فائنل سمجھ کر سیو کرو 🚀
                 if (msg?.serverContent?.turnComplete) {
                   const finalZaraText = aiFullResponse.trim();
                   if (finalZaraText !== "") {
-                    // 🚀 ctx.waitUntil: یہ سب سے بڑی گیم چینجر لائن ہے جو پچھلی بار مس تھی 🚀
                     ctx.waitUntil(
                       env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
                         .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
                     );
-                    
-                    aiFullResponse = ""; // اگلی بات کے لیے ویری ایبل کو دوبارہ خالی کر دو
+                    aiFullResponse = ""; 
                   }
                 }
               } catch (err) {}
             }
           } catch {}
         });
-        
 
-        server.addEventListener("close", () => { try { gcp.close(1000); } catch {} });
+        // 🚀 ایک اور حفاظتی تہہ: اگر کال کٹ جائے اور زارا کی بات پینڈنگ ہو تو اسے فورا سیو کر لو 🚀
+        server.addEventListener("close", () => { 
+          if (aiFullResponse.trim() !== "" && env.DB) {
+            ctx.waitUntil(
+              env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                .bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run()
+            );
+          }
+          try { gcp.close(1000); } catch {} 
+        });
         gcp.addEventListener("close", () => { try { server.close(1000); } catch {} });
 
         return new Response(null, { status: 101, webSocket: client });
@@ -252,9 +264,9 @@ export default {
         server.close(1011, "WS Catch Error");
         return new Response(null, { status: 101, webSocket: client });
       }
-    }
+                    }
+      
     
-
     // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
