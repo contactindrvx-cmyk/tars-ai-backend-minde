@@ -239,7 +239,7 @@ export default {
       }
     }
 
-                    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+        // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -285,8 +285,7 @@ export default {
           } catch (dbErr) {}
         }
 
-        // 🚀 THE ULTIMATE FIX: جیسے ہی "CMD" کا لفظ آئے، اس سے آگے کی ساری بکواس کاٹ کر پھینک دو! 🚀
-        // اس سے TTS کے پاس کبھی کمانڈ کا ایک حرف بھی نہیں جائے گا۔
+        // 🚀 THE ULTIMATE FIX: CMD سے آگے کا سارا حصہ کاٹ دے گا 🚀
         const cleanTextForSpeech = rawText.split(/\[?CMD/i)[0].trim();
 
         let audioBase64 = "";
@@ -295,7 +294,7 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: cleanTextForSpeech }, // 👈 اب اس میں 100% صرف اور صرف نیچرل اردو ہوگی
+              input: { text: cleanTextForSpeech }, 
               voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" },
               audioConfig: { audioEncoding: "MP3" }
             })
@@ -315,5 +314,8 @@ export default {
       } catch (e) {
         return new Response(JSON.stringify({ reply: `Server Error: ${e.message}` }), { status: 200, headers });
       }
-                                              }
-          
+    }
+
+    return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
+  }
+};
