@@ -239,7 +239,7 @@ export default {
       }
     }
 
-            // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+                // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -249,7 +249,6 @@ export default {
         const isPostAdmin = (emailFromPost === "alirazasabir007@gmail.com");
         const basePostMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
 
-        // 🧠 Memory Inject for Text Chat
         const memoryContext = await getRecentMemory(env, emailFromPost);
         const finalPostMindset = basePostMindset + memoryContext;
 
@@ -260,12 +259,8 @@ export default {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
 
-        const voiceName = "ur-IN-Wavenet-A"; 
-        const langCode = "ur-IN";
-
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
-        // 🚀 Vertex AI ka standard Text model wapas laga diya hai 🚀
         const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent?key=${vertexKey}`;
 
         const gcpRes = await fetch(vertexUrl, {
@@ -276,36 +271,36 @@ export default {
           })
         });
 
-        if (!gcpRes.ok) {
-          const err = await gcpRes.text();
-          return new Response(JSON.stringify({ reply: `Vertex Error: ${err}` }), { status: 200, headers });
-        }
+        if (!gcpRes.ok) return new Response(JSON.stringify({ reply: `Vertex Error` }), { status: 200, headers });
 
         const resData = await gcpRes.json();
         const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-        // D1 Database Logging
         if (isPostAdmin && env.DB) {
           try {
             await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
               .bind(emailFromPost, "user", userMessage, Date.now()).run();
             await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
               .bind(emailFromPost, "zara_ai", rawText, Date.now()).run();
-          } catch (dbErr) {
-            console.error("D1 Logging Error:", dbErr.message);
-          }
+          } catch (dbErr) {}
         }
 
-        // 🚀 Wapas TTS API lagana padega text ki aawaz ke liye 🚀
+        // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا 🚀
+        const cleanTextForSpeech = rawText.replace(/\[CMD:[^\]]*\]/g, "").trim();
+
         let audioBase64 = "";
         try {
           const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: rawText },
-              voice: { languageCode: langCode, name: voiceName },
-              audioConfig: { audioEncoding: "MP3" }
+              input: { text: cleanTextForSpeech }, // 👈 یہاں صرف صاف اردو جائے گی، کمانڈ نہیں!
+              voice: { languageCode: "ur-PK", name: "ur-PK-Wavenet-A" }, // 👈 پاکستانی وائس ماڈل
+              audioConfig: { 
+                audioEncoding: "MP3",
+                pitch: -1.5,         // 🚀 جادو 2: آواز کا بھاری پن تھوڑا سیٹ کیا تاکہ قدرتی لگے
+                speakingRate: 1.05   // 🚀 سپیڈ تھوڑی سی تیز کی تاکہ روبوٹک انداز ختم ہو
+              }
             })
           });
           if (ttsRes.ok) {
@@ -315,7 +310,7 @@ export default {
         } catch {}
 
         return new Response(JSON.stringify({
-          reply: rawText,
+          reply: rawText, // چیٹ میں بھیجنے کے لئے اصلی میسج (تاکہ React میں کمانڈ چل سکے)
           audioContent: audioBase64,
           agent_active: "zara"
         }), { status: 200, headers });
@@ -324,7 +319,4 @@ export default {
         return new Response(JSON.stringify({ reply: `Server Error: ${e.message}` }), { status: 200, headers });
       }
     }
-
-    return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
-  }
-};
+    
