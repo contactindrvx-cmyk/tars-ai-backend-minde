@@ -178,7 +178,7 @@ export default {
           }
         }));
 
-        // 🚀 THE ULTIMATE FIX: زارا کی آواز کے ٹکڑوں کو جوڑنے کے لیے 🚀
+                // 🚀 THE ULTIMATE FIX: زارا کی آواز کے ٹکڑوں کو جوڑنے کے لیے 🚀
         let aiFullResponse = "";
 
         // 1. User to Google (Client -> GCP)
@@ -188,12 +188,15 @@ export default {
           if (env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
-              // اگر کال کے دوران یوزر کوئی ٹیکسٹ بھیجے گا تو وہ ڈائریکٹ سیو ہوگا (ctx.waitUntil ہٹا دیا ہے)
+              // اگر کال کے دوران یوزر کوئی ٹیکسٹ بھیجے گا تو وہ ڈائریکٹ سیو ہوگا
               if (parsed?.clientContent?.turns) {
                 const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
                 if (userTxt.trim() !== "") {
-                  env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                    .bind(userEmail, "user", userTxt, Date.now()).run().catch(()=>{});
+                  // 🚀 ctx.waitUntil کے بغیر یہ سیو نہیں ہوگا 🚀
+                  ctx.waitUntil(
+                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                      .bind(userEmail, "user", userTxt, Date.now()).run()
+                  );
                 }
               }
             } catch (err) {}
@@ -210,7 +213,7 @@ export default {
               try {
                 const msg = JSON.parse(e.data);
                 
-                // 🚀 جادو 1: ٹکڑوں (Chunks) کو آپس میں جوڑنا 🚀
+                // ٹکڑوں (Chunks) کو آپس میں جوڑنا
                 const parts = msg?.serverContent?.modelTurn?.parts || [];
                 for (const p of parts) {
                   if (p?.text) {
@@ -218,11 +221,15 @@ export default {
                   }
                 }
                 
-                // 🚀 جادو 2: جب زارا اپنی بات پوری کر لے (turnComplete)، تب اسے فائنل سمجھ کر سیو کرو 🚀
+                // 🚀 جب زارا اپنی بات پوری کر لے (turnComplete)، تب اسے فائنل سمجھ کر سیو کرو 🚀
                 if (msg?.serverContent?.turnComplete) {
-                  if (aiFullResponse.trim() !== "") {
-                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                      .bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run().catch(()=>{});
+                  const finalZaraText = aiFullResponse.trim();
+                  if (finalZaraText !== "") {
+                    // 🚀 ctx.waitUntil: یہ سب سے بڑی گیم چینجر لائن ہے جو پچھلی بار مس تھی 🚀
+                    ctx.waitUntil(
+                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                        .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
+                    );
                     
                     aiFullResponse = ""; // اگلی بات کے لیے ویری ایبل کو دوبارہ خالی کر دو
                   }
@@ -231,6 +238,7 @@ export default {
             }
           } catch {}
         });
+        
 
         server.addEventListener("close", () => { try { gcp.close(1000); } catch {} });
         gcp.addEventListener("close", () => { try { server.close(1000); } catch {} });
