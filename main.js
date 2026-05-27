@@ -128,7 +128,7 @@ export default {
     const isAdmin = (userEmail === "alirazasabir007@gmail.com");
     const baseMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
 
-    // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
+        // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
@@ -178,44 +178,56 @@ export default {
           }
         }));
 
+        // 🚀 THE ULTIMATE FIX: زارا کی آواز کے ٹکڑوں کو جوڑنے کے لیے 🚀
+        let aiFullResponse = "";
+
+        // 1. User to Google (Client -> GCP)
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
           
-          if (env.DB && typeof e.data === "string") { // 👈 یہاں سے ایڈمن کی شرط ختم کر دی گئی ہے
+          if (env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
-              const textChunk = parsed?.realtimeInput?.mediaChunks?.[0]?.data || ""; 
-              if (textChunk && parsed?.clientContent?.turns) {
+              // اگر کال کے دوران یوزر کوئی ٹیکسٹ بھیجے گا تو وہ ڈائریکٹ سیو ہوگا (ctx.waitUntil ہٹا دیا ہے)
+              if (parsed?.clientContent?.turns) {
                 const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
-                if (userTxt) {
-                  ctx.waitUntil(
-                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                      .bind(userEmail, "user", userTxt, Date.now()).run()
-                  );
+                if (userTxt.trim() !== "") {
+                  env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                    .bind(userEmail, "user", userTxt, Date.now()).run().catch(()=>{});
                 }
               }
-            } catch (err) { console.error("WS DB User Insert Error:", err); }
+            } catch (err) {}
           }
           gcp.send(e.data);
         });
 
+        // 2. Google to User (GCP -> Client)
         gcp.addEventListener("message", (e) => {
           try { 
             server.send(e.data); 
             
-            if (env.DB && typeof e.data === "string") { // 👈 ایڈمن کی شرط ختم
+            if (env.DB && typeof e.data === "string") {
               try {
                 const msg = JSON.parse(e.data);
+                
+                // 🚀 جادو 1: ٹکڑوں (Chunks) کو آپس میں جوڑنا 🚀
                 const parts = msg?.serverContent?.modelTurn?.parts || [];
                 for (const p of parts) {
                   if (p?.text) {
-                    ctx.waitUntil(
-                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                        .bind(userEmail, "zara_ai", p.text, Date.now()).run()
-                    );
+                    aiFullResponse += p.text;
                   }
                 }
-              } catch (err) { console.error("WS DB AI Insert Error:", err); }
+                
+                // 🚀 جادو 2: جب زارا اپنی بات پوری کر لے (turnComplete)، تب اسے فائنل سمجھ کر سیو کرو 🚀
+                if (msg?.serverContent?.turnComplete) {
+                  if (aiFullResponse.trim() !== "") {
+                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                      .bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run().catch(()=>{});
+                    
+                    aiFullResponse = ""; // اگلی بات کے لیے ویری ایبل کو دوبارہ خالی کر دو
+                  }
+                }
+              } catch (err) {}
             }
           } catch {}
         });
@@ -233,6 +245,7 @@ export default {
         return new Response(null, { status: 101, webSocket: client });
       }
     }
+    
 
     // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
