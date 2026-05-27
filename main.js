@@ -239,7 +239,7 @@ export default {
       }
     }
 
-        // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+            // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -254,28 +254,25 @@ export default {
         const finalPostMindset = basePostMindset + memoryContext;
 
         const vertexKey = env.VERTEX_API_KEY;
+        const ttsKey = env.TTS_API_KEY;
 
-        if (!vertexKey) {
+        if (!vertexKey || !ttsKey) {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
 
+        const voiceName = "ur-IN-Wavenet-A"; 
+        const langCode = "ur-IN";
+
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
-        // 🚀 ماڈل کو flash-lite سے flash کر دیا ہے تاکہ وہ نیٹو آڈیو بنا سکے 🚀
+        // 🚀 Vertex AI ka standard Text model wapas laga diya hai 🚀
         const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent?key=${vertexKey}`;
 
-        // 🚀 یہاں ہم نے TTS اڑا کر جمنائی سے سیدھا آڈیو مانگ لی ہے 🚀
         const gcpRes = await fetch(vertexUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }],
-            generationConfig: {
-              responseModalities: ["TEXT", "AUDIO"], 
-              speechConfig: {
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
-              }
-            }
+            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }]
           })
         });
 
@@ -285,18 +282,7 @@ export default {
         }
 
         const resData = await gcpRes.json();
-        const parts = resData?.candidates?.[0]?.content?.parts || [];
-        
-        let rawText = "";
-        let audioBase64 = "";
-
-        // 🚀 جواب میں سے ٹیکسٹ اور اصلی آڈیو الگ الگ نکالنا 🚀
-        for (const p of parts) {
-            if (p.text) rawText += p.text;
-            if (p.inlineData && p.inlineData.data) {
-                audioBase64 = p.inlineData.data;
-            }
-        }
+        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
         // D1 Database Logging
         if (isPostAdmin && env.DB) {
@@ -309,6 +295,24 @@ export default {
             console.error("D1 Logging Error:", dbErr.message);
           }
         }
+
+        // 🚀 Wapas TTS API lagana padega text ki aawaz ke liye 🚀
+        let audioBase64 = "";
+        try {
+          const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              input: { text: rawText },
+              voice: { languageCode: langCode, name: voiceName },
+              audioConfig: { audioEncoding: "MP3" }
+            })
+          });
+          if (ttsRes.ok) {
+            const ttsData = await ttsRes.json();
+            audioBase64 = ttsData.audioContent || "";
+          }
+        } catch {}
 
         return new Response(JSON.stringify({
           reply: rawText,
