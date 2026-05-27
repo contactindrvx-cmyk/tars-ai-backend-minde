@@ -285,7 +285,7 @@ export default {
           } catch (dbErr) {}
         }
 
-                // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا (یہ بالکل ٹھیک کام کر رہا ہے) 🚀
+                        // 🚀 جادو 1: آڈیو بننے سے پہلے کمانڈ کو گلے سے کاٹ دینا 🚀
         const cleanTextForSpeech = rawText.replace(/\[CMD:[^\]]*\]/g, "").trim();
 
         let audioBase64 = "";
@@ -294,12 +294,11 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: cleanTextForSpeech },
-              // 🚀 جادو 2: واپس سب سے بہترین اور نرم آواز (ur-IN-Wavenet-A) لگا دی گئی ہے 🚀
-              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" }, 
+              input: { text: cleanTextForSpeech }, // 👈 کمانڈ کے بغیر صاف اردو
+              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" }, // 👈 بہترین اوریجنل آواز
               audioConfig: { 
                 audioEncoding: "MP3"
-                // یہاں سے میں نے پچ اور سپیڈ کی چھیڑ چھاڑ مکمل ختم کر دی ہے تاکہ آواز 100% اصلی رہے
+                // 🚀 پچ اور سپیڈ یہاں سے مکمل اڑا دی گئی ہے تاکہ 100% نیچرل آواز آئے 🚀
               }
             })
           });
@@ -308,6 +307,7 @@ export default {
             audioBase64 = ttsData.audioContent || "";
           }
         } catch {}
+        
         
 
         return new Response(JSON.stringify({
