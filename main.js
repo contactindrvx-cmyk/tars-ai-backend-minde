@@ -239,7 +239,7 @@ export default {
       }
     }
 
-    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+        // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
     if (request.method === "POST") {
       try {
         const body = await request.json();
@@ -254,24 +254,28 @@ export default {
         const finalPostMindset = basePostMindset + memoryContext;
 
         const vertexKey = env.VERTEX_API_KEY;
-        const ttsKey = env.TTS_API_KEY;
 
-        if (!vertexKey || !ttsKey) {
+        if (!vertexKey) {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
 
-        const voiceName = "ur-IN-Wavenet-A"; 
-        const langCode = "ur-IN";
-
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
-        const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash-lite:generateContent?key=${vertexKey}`;
+        // 🚀 ماڈل کو flash-lite سے flash کر دیا ہے تاکہ وہ نیٹو آڈیو بنا سکے 🚀
+        const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent?key=${vertexKey}`;
 
+        // 🚀 یہاں ہم نے TTS اڑا کر جمنائی سے سیدھا آڈیو مانگ لی ہے 🚀
         const gcpRes = await fetch(vertexUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }]
+            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }],
+            generationConfig: {
+              responseModalities: ["TEXT", "AUDIO"], 
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
+              }
+            }
           })
         });
 
@@ -281,8 +285,20 @@ export default {
         }
 
         const resData = await gcpRes.json();
-        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const parts = resData?.candidates?.[0]?.content?.parts || [];
+        
+        let rawText = "";
+        let audioBase64 = "";
 
+        // 🚀 جواب میں سے ٹیکسٹ اور اصلی آڈیو الگ الگ نکالنا 🚀
+        for (const p of parts) {
+            if (p.text) rawText += p.text;
+            if (p.inlineData && p.inlineData.data) {
+                audioBase64 = p.inlineData.data;
+            }
+        }
+
+        // D1 Database Logging
         if (isPostAdmin && env.DB) {
           try {
             await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
@@ -293,23 +309,6 @@ export default {
             console.error("D1 Logging Error:", dbErr.message);
           }
         }
-
-        let audioBase64 = "";
-        try {
-          const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              input: { text: rawText },
-              voice: { languageCode: langCode, name: voiceName },
-              audioConfig: { audioEncoding: "MP3" }
-            })
-          });
-          if (ttsRes.ok) {
-            const ttsData = await ttsRes.json();
-            audioBase64 = ttsData.audioContent || "";
-          }
-        } catch {}
 
         return new Response(JSON.stringify({
           reply: rawText,
@@ -325,4 +324,3 @@ export default {
     return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
   }
 };
-      
