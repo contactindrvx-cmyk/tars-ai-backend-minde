@@ -56,62 +56,56 @@ Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کا�
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
 
-// =====================================================================
-// 🔐 2. GOOGLE VERTEX AUTHENTICATION
-// =====================================================================
-async function getVertexToken(saJson) {
-  const sa = JSON.parse(saJson);
-  const now = Math.floor(Date.now() / 1000);
+        // =====================================================================
+        // 🚀 REPLACED: 2. Google to User (With Real-Time Command Triggering)
+        // =====================================================================
+        gcp.addEventListener("message", (e) => {
+          try { 
+            // 1. خام آڈیو اور ڈیٹا پیکٹ فوراً یوزر کے موبائل پر بھیجیں تاکہ آواز نہ اٹکے
+            server.send(e.data); 
+            
+            if (env.DB && typeof e.data === "string") {
+              try {
+                const msg = JSON.parse(e.data);
+                const parts = msg?.serverContent?.modelTurn?.parts || [];
+                
+                for (const p of parts) {
+                  // اگر گوگل ٹیکسٹ ڈیٹا بھیج رہا ہے (جس میں کمانڈز شامل ہیں)
+                  if (p?.text) {
+                    aiFullResponse += p.text;
+                    
+                    // 🔥 جادو: جیسے ہی ٹیکسٹ میں کمانڈ نظر آئے، اسے فوراً فرنٹ اینڈ پر ٹرگر کریں
+                    if (p.text.includes("[CMD:")) {
+                      const cmdMatch = p.text.match(/\[CMD:[^\]]+\]/);
+                      if (cmdMatch) {
+                        server.send(JSON.stringify({
+                          type: "NATIVE_COMMAND",
+                          command: cmdMatch[0]
+                        }));
+                      }
+                    }
+                  }
+                }
+                
+                // جب زارا اپنی بات مکمل کر لے تو ٹیکسٹ کو ڈیٹا بیس میں لاگ کریں
+                if (msg?.serverContent?.turnComplete) {
+                  const finalZaraText = aiFullResponse.trim();
+                  if (finalZaraText !== "") {
+                    ctx.waitUntil(
+                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
+                        .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
+                    );
+                    aiFullResponse = ""; 
+                  }
+                }
+              } catch (err) {
+                // اگر پارسنگ میں کوئی ایشو آئے تو آڈیو اسٹریم متاثر نہ ہو
+              }
+            }
+          } catch (streamErr) {}
+        });
+        // =====================================================================
 
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-  const claim = btoa(JSON.stringify({
-    iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/cloud-platform",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600, iat: now
-  })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-
-  const sigInput = `${header}.${claim}`;
-  const pemKey = sa.private_key.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\n/g, "");
-  const keyBytes = Uint8Array.from(atob(pemKey), c => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8", keyBytes.buffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
-  );
-
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(sigInput));
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-
-  return `${sigInput}.${sigB64}`;
-}
-
-async function fetchAccessToken(jwt) {
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
-  });
-  const tokenData = await tokenRes.json();
-  return tokenData.access_token;
-}
-
-// 🚀 پچھلی میموری نکالنے کا فنکشن (یہ بالکل ٹھیک ہے) 🚀
-async function getRecentMemory(env, email, limit = 15) {
-  if (!env.DB) return "";
-  try {
-    const { results } = await env.DB.prepare(
-      "SELECT role, text FROM conversations WHERE email = ? ORDER BY timestamp DESC LIMIT ?"
-    ).bind(email, limit).all();
-    
-    if (!results || results.length === 0) return "";
-    
-    const history = results.reverse().map(r => `${r.role === 'user' ? 'User/Boss' : 'ZARA'}: ${r.text}`).join("\n");
-    return `\n\n[PAST MEMORY CONTEXT - FOR YOUR AWARENESS ONLY]\n${history}\n[END MEMORY]\n`;
-  } catch (e) {
-    console.error("Memory Fetch Error:", e);
-    return "";
-  }
-}
 
 // =====================================================================
 // 🚀 3. MAIN WORKER LOGIC
