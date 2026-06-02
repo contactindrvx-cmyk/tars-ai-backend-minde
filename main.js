@@ -55,33 +55,33 @@ Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کا�
 - Read Screen: [CMD:SCREEN_READ]
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
- // =====================================================================
-        // 🚀 REPLACED: 2. Google to User (With 100% Reliable Command Triggering)
+         // =====================================================================
+        // 🚀 FIX: 2. Google to User (With Native Command Triggering)
         // =====================================================================
         gcp.addEventListener("message", (e) => {
           try { 
-            // 1. خام آڈیو اور ڈیٹا پیکٹ فوراً یوزر کے موبائل پر بھیجیں تاکہ آواز نہ اٹکے
+            // 1. خام آڈیو فوراً فرنٹ اینڈ (موبائل) پر بھیجیں تاکہ آواز نہ اٹکے
             server.send(e.data); 
             
             if (env.DB && typeof e.data === "string") {
               try {
                 const msg = JSON.parse(e.data);
-                const parts = msg?.serverContent?.modelTurn?.parts || [];
                 
+                // ٹیکسٹ کے ٹکڑوں (chunks) کو جوڑتے جائیں
+                const parts = msg?.serverContent?.modelTurn?.parts || [];
                 for (const p of parts) {
-                  // ٹیکسٹ کو جوڑتے جائیں (کیونکہ گوگل اسے ٹکڑوں یعنی chunks میں بھیجتا ہے)
                   if (p?.text) {
                     aiFullResponse += p.text;
                   }
                 }
                 
-                // 🔥 جادو: جب زارا کی بات (Turn) مکمل ہو جائے، تب اسے پروسیس کریں
+                // 2. جب زارا کی بات (Turn) مکمل ہو جائے
                 if (msg?.serverContent?.turnComplete) {
                   const finalZaraText = aiFullResponse.trim();
                   
                   if (finalZaraText !== "") {
-                    // 1. مکمل جڑے ہوئے ٹیکسٹ میں سے کمانڈ نکالیں اور فوراً فرنٹ اینڈ کو بھیجیں
-                    // (اب یہ کبھی فیل نہیں ہوگا کیونکہ کمانڈ پوری طرح بن چکی ہے)
+                    
+                    // 🔥 جادو: مکمل ٹیکسٹ میں سے کمانڈ نکال کر موبائل کو بھیجیں
                     const cmdMatch = finalZaraText.match(/\[CMD:[^\]]+\]/);
                     if (cmdMatch) {
                       server.send(JSON.stringify({
@@ -90,23 +90,23 @@ Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کا�
                       }));
                     }
 
-                    // 2. ڈیٹا بیس میں میسج سیو کریں
+                    // 3. ڈیٹا بیس میں سیو کریں
                     ctx.waitUntil(
                       env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
                         .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
                     );
                     
-                    // 3. اگلی باری کے لیے ریسپانس کلیئر کریں
+                    // اگلی باری کے لیے ریسپانس ویری ایبل کو خالی کر دیں
                     aiFullResponse = ""; 
                   }
                 }
               } catch (err) {
-                // اگر پارسنگ میں کوئی ایشو آئے تو آڈیو اسٹریم متاثر نہ ہو
+                // اگر JSON پارسنگ میں کوئی مسئلہ آئے تو آڈیو چلتی رہے، کریش نہ ہو
               }
             }
           } catch (streamErr) {}
         });
-        // =====================================================================
+       
 
               
 
