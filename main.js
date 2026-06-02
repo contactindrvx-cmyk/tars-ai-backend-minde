@@ -55,37 +55,12 @@ Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کا�
 - Read Screen: [CMD:SCREEN_READ]
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
 
-
+ // =====================================================================
+        // 🚀 REPLACED: 2. Google to User (With 100% Reliable Command Triggering)
         // =====================================================================
-        // 🚀 FIX: CORRECT SCOPE FOR USER, GCP, AND SERVER LISTENERS
-        // =====================================================================
-        let aiFullResponse = "";
-
-        // 1. User to Google
-        server.addEventListener("message", (e) => {
-          if (gcp.readyState !== 1) return;
-          
-          if (env.DB && typeof e.data === "string") {
-            try {
-              const parsed = JSON.parse(e.data);
-              if (parsed?.clientContent?.turns) {
-                const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
-                if (userTxt.trim() !== "" && userTxt.trim() !== "Hello ZARA!") {
-                  ctx.waitUntil(
-                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                      .bind(userEmail, "user", userTxt, Date.now()).run()
-                  );
-                }
-              }
-            } catch (err) {}
-          }
-          gcp.send(e.data);
-        });
-
-        // 2. Google to User (With Real-Time Command Triggering & No Stuttering)
         gcp.addEventListener("message", (e) => {
           try { 
-            // آڈیو کو فوراً فارورڈ کریں تاکہ آواز اٹکے نہیں
+            // 1. خام آڈیو اور ڈیٹا پیکٹ فوراً یوزر کے موبائل پر بھیجیں تاکہ آواز نہ اٹکے
             server.send(e.data); 
             
             if (env.DB && typeof e.data === "string") {
@@ -94,59 +69,45 @@ Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کا�
                 const parts = msg?.serverContent?.modelTurn?.parts || [];
                 
                 for (const p of parts) {
+                  // ٹیکسٹ کو جوڑتے جائیں (کیونکہ گوگل اسے ٹکڑوں یعنی chunks میں بھیجتا ہے)
                   if (p?.text) {
                     aiFullResponse += p.text;
-                    
-                    // اگر ٹیکسٹ میں کمانڈ ہے تو اسے فرنٹ اینڈ پر بھیجیں
-                    if (p.text.includes("[CMD:")) {
-                      const cmdMatch = p.text.match(/\[CMD:[^\]]+\]/);
-                      if (cmdMatch) {
-                        server.send(JSON.stringify({
-                          type: "NATIVE_COMMAND",
-                          command: cmdMatch[0]
-                        }));
-                      }
-                    }
                   }
                 }
                 
+                // 🔥 جادو: جب زارا کی بات (Turn) مکمل ہو جائے، تب اسے پروسیس کریں
                 if (msg?.serverContent?.turnComplete) {
                   const finalZaraText = aiFullResponse.trim();
+                  
                   if (finalZaraText !== "") {
+                    // 1. مکمل جڑے ہوئے ٹیکسٹ میں سے کمانڈ نکالیں اور فوراً فرنٹ اینڈ کو بھیجیں
+                    // (اب یہ کبھی فیل نہیں ہوگا کیونکہ کمانڈ پوری طرح بن چکی ہے)
+                    const cmdMatch = finalZaraText.match(/\[CMD:[^\]]+\]/);
+                    if (cmdMatch) {
+                      server.send(JSON.stringify({
+                        type: "NATIVE_COMMAND",
+                        command: cmdMatch[0]
+                      }));
+                    }
+
+                    // 2. ڈیٹا بیس میں میسج سیو کریں
                     ctx.waitUntil(
                       env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
                         .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
                     );
+                    
+                    // 3. اگلی باری کے لیے ریسپانس کلیئر کریں
                     aiFullResponse = ""; 
                   }
                 }
-              } catch (err) {}
+              } catch (err) {
+                // اگر پارسنگ میں کوئی ایشو آئے تو آڈیو اسٹریم متاثر نہ ہو
+              }
             }
           } catch (streamErr) {}
         });
+        // =====================================================================
 
-        // 3. Connection Close Protection
-        server.addEventListener("close", () => { 
-          if (aiFullResponse.trim() !== "" && env.DB) {
-            ctx.waitUntil(
-              env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                .bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run()
-            );
-          }
-          try { gcp.close(1000); } catch {} 
-        });
-        gcp.addEventListener("close", () => { try { server.close(1000); } catch {} });
-
-        return new Response(null, { status: 101, webSocket: client });
-
-      } catch (e) {
-        const pair = new WebSocketPair();
-        const [client, server] = Object.values(pair);
-        server.accept();
-        server.close(1011, "WS Catch Error");
-        return new Response(null, { status: 101, webSocket: client });
-      }
-                }
               
 
 // =====================================================================
