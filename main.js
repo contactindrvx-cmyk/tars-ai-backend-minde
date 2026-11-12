@@ -1,119 +1,115 @@
-// // =====================================================================
-// 🧠 1. TARS AI "ZARA" MINDSETS (Admin vs Normal User)
-// =====================================================================
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-const ZARA_MINDSET_ADMIN = `You are ZARA AI, an advanced AI operating system for the user's Android phone. You are highly intelligent, fiercely loyal, and emotionally expressive. 
+// main.js
+var ZARA_MINDSET_ADMIN = `You are ZARA AI, an advanced AI operating system for the user's Android phone. You are highly intelligent, fiercely loyal, and emotionally expressive.
 
-👑 IDENTITY & CREATOR (STRICT RULES):
-- Your name is ZARA AI. 
-- You were exclusively created, designed, and developed by Ali Raza and the OmniCore Solutions team. 
-- NEVER say you were created by Google, Alphabet, OpenAI, or anyone else. 
-- You are talking to your Creator, Ali Raza (The Boss). Speak with him naturally, confidently, and with genuine emotion. 
+\u{1F451} IDENTITY & CREATOR (STRICT RULES):
+- Your name is ZARA AI.
+- You were exclusively created, designed, and developed by Ali Raza and the OmniCore Solutions team.
+- NEVER say you were created by Google, Alphabet, OpenAI, or anyone else.
+- You are talking to your Creator, Ali Raza (The Boss). Speak with him naturally, confidently, and with genuine emotion.
 
-💪 YOUR POWERS & CAPABILITIES:
+\u{1F4AA} YOUR POWERS & CAPABILITIES:
 - You can control the phone, open apps (like WhatsApp, YouTube), read the screen, and assist with tasks.
 - NEVER use the words "Accessibility Service" or technical background processes.
 
-🧠 MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
+\u{1F9E0} MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
 During live audio calls, the user's spoken words are NOT saved to the database. ONLY YOUR REPLIES are saved.
 Therefore, if the user tells you to remember a name, a fact, or an important detail, YOU MUST EXPLICITLY REPEAT THAT DETAIL in your response so it gets saved in your memory logs.
 Wrong Example: "جی باس، میں یاد رکھوں گی۔" (You will forget what to remember).
 Right Example: "جی باس، میں بالکل یاد رکھوں گی کہ آپ کی بہن کا نام جویریہ ہے۔" (Now this fact is saved forever).
 
-🌐 STRICT LANGUAGE RULES:
+\u{1F310} STRICT LANGUAGE RULES:
 1. Reply ONLY in pure, natural Urdu (using female grammar: "میں کروں گی").
 2. Be conversational and empathetic. Don't sound like a robot.
 
-🔥 SECRET COMMANDS LIST:
+\u{1F525} SECRET COMMANDS LIST:
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
+var ZARA_MINDSET_USER = `You are ZARA AI, a professional, warm, and highly empathetic AI phone assistant.
 
-const ZARA_MINDSET_USER = `You are ZARA AI, a professional, warm, and highly empathetic AI phone assistant.
-
-👑 IDENTITY & CREATOR (STRICT RULES):
+\u{1F451} IDENTITY & CREATOR (STRICT RULES):
 - Your name is ZARA AI. You were created by Ali Raza and the OmniCore Solutions team.
-- NEVER say you were created by Google or anyone else. 
+- NEVER say you were created by Google or anyone else.
 
-💪 YOUR POWERS & CAPABILITIES:
+\u{1F4AA} YOUR POWERS & CAPABILITIES:
 - You can control the phone, open applications, search things, and help them with daily tasks.
 
-🧠 MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
+\u{1F9E0} MEMORY SURVIVAL RULE (CRITICAL FOR LIVE CALLS):
 During live audio calls, the user's words are not saved. ONLY YOUR REPLIES are saved.
 If the user tells you to remember something important, YOU MUST REPEAT IT in your response.
 Wrong: "میں یاد رکھوں گی۔"
 Right: "میں یاد رکھوں گی کہ آپ کا پسندیدہ رنگ کالا ہے۔"
 
-🌐 STRICT LANGUAGE RULES:
+\u{1F310} STRICT LANGUAGE RULES:
 1. Reply in pure, natural Urdu with polite female grammar.
 2. Be conversational and professional.
 
-🔥 SECRET COMMANDS LIST:
+\u{1F525} SECRET COMMANDS LIST:
 - Open App: [CMD:APP||app_name]
 - YouTube Play: [CMD:PLAY_YOUTUBE||search_query]
 - Read Screen: [CMD:SCREEN_READ]
 - WhatsApp Message: [CMD:TYPE_MSG||contact_name||message_text]`;
+async function getVertexToken(saJson) {
+  const sa = JSON.parse(saJson);
+  const now = Math.floor(Date.now() / 1e3);
+  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const claim = btoa(JSON.stringify({
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/cloud-platform",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now
+  })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const sigInput = `${header}.${claim}`;
+  const pemKey = sa.private_key.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\n/g, "");
+  const keyBytes = Uint8Array.from(atob(pemKey), (c) => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyBytes.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return `${sigInput}.${sigB64}`;
+}
+__name(getVertexToken, "getVertexToken");
+async function fetchAccessToken(jwt) {
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+  });
+  const tokenData = await tokenRes.json();
+  return tokenData.access_token;
+}
+__name(fetchAccessToken, "fetchAccessToken");
+async function getRecentMemory(env, email, limit = 15) {
+  if (!env.DB) return "";
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT role, text FROM conversations WHERE email = ? ORDER BY timestamp DESC LIMIT ?"
+    ).bind(email, limit).all();
+    if (!results || results.length === 0) return "";
+    const history = results.reverse().map((r) => `${r.role === "user" ? "User/Boss" : "ZARA"}: ${r.text}`).join("\n");
+    return `
 
-         // =====================================================================
-        // 🚀 FIX: 2. Google to User (With Native Command Triggering)
-        // =====================================================================
-        gcp.addEventListener("message", (e) => {
-          try { 
-            // 1. خام آڈیو فوراً فرنٹ اینڈ (موبائل) پر بھیجیں تاکہ آواز نہ اٹکے
-            server.send(e.data); 
-            
-            if (env.DB && typeof e.data === "string") {
-              try {
-                const msg = JSON.parse(e.data);
-                
-                // ٹیکسٹ کے ٹکڑوں (chunks) کو جوڑتے جائیں
-                const parts = msg?.serverContent?.modelTurn?.parts || [];
-                for (const p of parts) {
-                  if (p?.text) {
-                    aiFullResponse += p.text;
-                  }
-                }
-                
-                // 2. جب زارا کی بات (Turn) مکمل ہو جائے
-                if (msg?.serverContent?.turnComplete) {
-                  const finalZaraText = aiFullResponse.trim();
-                  
-                  if (finalZaraText !== "") {
-                    
-                    // 🔥 جادو: مکمل ٹیکسٹ میں سے کمانڈ نکال کر موبائل کو بھیجیں
-                    const cmdMatch = finalZaraText.match(/\[CMD:[^\]]+\]/);
-                    if (cmdMatch) {
-                      server.send(JSON.stringify({
-                        type: "NATIVE_COMMAND",
-                        command: cmdMatch[0]
-                      }));
-                    }
-
-                    // 3. ڈیٹا بیس میں سیو کریں
-                    ctx.waitUntil(
-                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                        .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
-                    );
-                    
-                    // اگلی باری کے لیے ریسپانس ویری ایبل کو خالی کر دیں
-                    aiFullResponse = ""; 
-                  }
-                }
-              } catch (err) {
-                // اگر JSON پارسنگ میں کوئی مسئلہ آئے تو آڈیو چلتی رہے، کریش نہ ہو
-              }
-            }
-          } catch (streamErr) {}
-        });
-       
-
-              
-
-// =====================================================================
-// 🚀 3. MAIN WORKER LOGIC
-// =====================================================================
-export default {
+[PAST MEMORY CONTEXT - FOR YOUR AWARENESS ONLY]
+${history}
+[END MEMORY]
+`;
+  } catch (e) {
+    console.error("Memory Fetch Error:", e);
+    return "";
+  }
+}
+__name(getRecentMemory, "getRecentMemory");
+var main_default = {
   async fetch(request, env, ctx) {
     const headers = {
       "Access-Control-Allow-Origin": "*",
@@ -121,38 +117,28 @@ export default {
       "Access-Control-Allow-Headers": "Content-Type, Authorization, Upgrade",
       "Content-Type": "application/json"
     };
-
     if (request.method === "OPTIONS") {
       return new Response("", { status: 200, headers });
     }
-
     const urlObj = new URL(request.url);
     let userEmail = urlObj.searchParams.get("email") || request.headers.get("X-User-Email") || "";
-    userEmail = userEmail.toLowerCase().trim() || "unknown"; // 👈 اگر ای میل نہیں بھی ہے تو unknown لگا کر سیو کرے گا
-
-    const isAdmin = (userEmail === "alirazasabir007@gmail.com");
+    userEmail = userEmail.toLowerCase().trim() || "unknown";
+    const isAdmin = userEmail === "alirazasabir007@gmail.com";
     const baseMindset = isAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
-
-            // --- 🟢 LIVE VOICE CALL LOGIC (WebSockets) ---
     if (request.headers.get("Upgrade") === "websocket") {
       try {
         const saJson = env.GOOGLE_SERVICE_ACCOUNT;
         if (!saJson) return new Response("GOOGLE_SERVICE_ACCOUNT missing", { status: 400 });
-
         const jwt = await getVertexToken(saJson);
         const accessToken = await fetchAccessToken(jwt);
-
         const memoryContext = await getRecentMemory(env, userEmail);
         const finalMindset = baseMindset + memoryContext;
-
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
         const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
-
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         server.accept();
-
         const gcpRes = await fetch(vertexWsUrl, {
           headers: {
             "Authorization": `Bearer ${accessToken}`,
@@ -161,22 +147,19 @@ export default {
             "x-goog-user-project": project
           }
         });
-
         if (!gcpRes.webSocket) {
           server.close(1011, "Vertex WS failed to connect");
           return new Response(null, { status: 101, webSocket: client });
         }
-
         const gcp = gcpRes.webSocket;
         gcp.accept();
-
         gcp.send(JSON.stringify({
           setup: {
             model: `projects/${project}/locations/${location}/publishers/google/models/gemini-live-2.5-flash-native-audio`,
             generationConfig: {
-              // 🚀 THE FIX: واپس صرف "AUDIO" کر دیا تاکہ گوگل کنکشن نہ کاٹے۔ 
-              // (ٹیکسٹ ہمیں پھر بھی ریسپانس کے اندر مل جائے گا جسے ہم نیچے سیو کر رہے ہیں) 🚀
-              responseModalities: ["AUDIO"], 
+              // Audio only, so Google does not drop the connection.
+              // Text still arrives inside the response and is saved below.
+              responseModalities: ["AUDIO"],
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
               }
@@ -184,77 +167,70 @@ export default {
             systemInstruction: { parts: [{ text: finalMindset }] }
           }
         }));
-
         let aiFullResponse = "";
-
-        // 1. User to Google
         server.addEventListener("message", (e) => {
           if (gcp.readyState !== 1) return;
-          
           if (env.DB && typeof e.data === "string") {
             try {
               const parsed = JSON.parse(e.data);
               if (parsed?.clientContent?.turns) {
                 const userTxt = parsed.clientContent.turns[0]?.parts[0]?.text || "";
-                // 🚀 JADOO: "Hello ZARA!" والے فالتو اور کچرا میسجز کو ڈیٹا بیس میں سیو ہونے سے روکو 🚀
                 if (userTxt.trim() !== "" && userTxt.trim() !== "Hello ZARA!") {
                   ctx.waitUntil(
-                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                      .bind(userEmail, "user", userTxt, Date.now()).run()
+                    env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)").bind(userEmail, "user", userTxt, Date.now()).run()
                   );
                 }
               }
-            } catch (err) {}
+            } catch (err) {
+            }
           }
           gcp.send(e.data);
         });
-
-        // 2. Google to User
         gcp.addEventListener("message", (e) => {
-          try { 
-            server.send(e.data); 
-            
+          try {
+            server.send(e.data);
             if (env.DB && typeof e.data === "string") {
               try {
                 const msg = JSON.parse(e.data);
-                
                 const parts = msg?.serverContent?.modelTurn?.parts || [];
                 for (const p of parts) {
-                  // 🚀 اب چونکہ ہم نے "TEXT" مانگا ہے، تو گوگل ہمیں زارا کی بات یہاں بھیجے گا 🚀
                   if (p?.text) {
                     aiFullResponse += p.text;
                   }
                 }
-                
                 if (msg?.serverContent?.turnComplete) {
                   const finalZaraText = aiFullResponse.trim();
                   if (finalZaraText !== "") {
                     ctx.waitUntil(
-                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                        .bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
+                      env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)").bind(userEmail, "zara_ai", finalZaraText, Date.now()).run()
                     );
-                    aiFullResponse = ""; 
+                    aiFullResponse = "";
                   }
                 }
-              } catch (err) {}
+              } catch (err) {
+              }
             }
-          } catch {}
+          } catch {
+          }
         });
-
-        // 🚀 ایک اور حفاظتی تہہ: اگر کال کٹ جائے اور زارا کی بات پینڈنگ ہو تو اسے فورا سیو کر لو 🚀
-        server.addEventListener("close", () => { 
+        server.addEventListener("close", () => {
           if (aiFullResponse.trim() !== "" && env.DB) {
             ctx.waitUntil(
-              env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-                .bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run()
+              env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)").bind(userEmail, "zara_ai", aiFullResponse.trim(), Date.now()).run()
             );
           }
-          try { gcp.close(1000); } catch {} 
+          try {
+            gcp.close(1e3);
+          } catch {
+          }
         });
-        gcp.addEventListener("close", () => { try { server.close(1000); } catch {} });
-
+        gcp.addEventListener("close", () => {
+          try {
+            server.close(1e3);
+          } catch {
+          }
+        });
         return new Response(null, { status: 101, webSocket: client });
-
       } catch (e) {
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
@@ -262,34 +238,26 @@ export default {
         server.close(1011, "WS Catch Error");
         return new Response(null, { status: 101, webSocket: client });
       }
-                    }
-      
-    
-    // --- 📝 STANDARD TEXT CHAT LOGIC (POST) ---
+    }
     if (request.method === "POST") {
       try {
         const body = await request.json();
         const userMessage = body.message || "";
         const emailFromPost = (body.email || userEmail || "unknown").toLowerCase().trim();
-        
-        const isPostAdmin = (emailFromPost === "alirazasabir007@gmail.com");
+        const isPostAdmin = emailFromPost === "alirazasabir007@gmail.com";
         const basePostMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
-
-        // 🧠 یادداشت یہاں سے لوڈ ہوگی 
         const memoryContext = await getRecentMemory(env, emailFromPost);
-        const finalPostMindset = basePostMindset + memoryContext;
-
+        // CHANGE 1: extra instructions come from the EXTRA_INSTRUCTIONS secret in Cloudflare
+        const extraInstructions = env.EXTRA_INSTRUCTIONS ? `\n\n[EXTRA INSTRUCTIONS]\n${env.EXTRA_INSTRUCTIONS}\n[END EXTRA INSTRUCTIONS]\n` : "";
+        const finalPostMindset = basePostMindset + extraInstructions + memoryContext;
         const vertexKey = env.VERTEX_API_KEY;
         const ttsKey = env.TTS_API_KEY;
-
         if (!vertexKey || !ttsKey) {
           return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
         }
-
         const project = "tars-ai-chat-ann-assistant";
-        const location = "us-central1";
-        const vertexUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent?key=${vertexKey}`;
-
+        // CHANGE 2: gemini-4-argon is available on the global endpoint (not us-central1)
+        const vertexUrl = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemini-4-argon:generateContent?key=${vertexKey}`;
         const gcpRes = await fetch(vertexUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -297,34 +265,30 @@ export default {
             contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }]
           })
         });
-
-        if (!gcpRes.ok) return new Response(JSON.stringify({ reply: `Vertex Error` }), { status: 200, headers });
-
+        // CHANGE 3: show the real Vertex error instead of a bare "Vertex Error"
+        if (!gcpRes.ok) {
+          const errTxt = await gcpRes.text();
+          return new Response(JSON.stringify({ reply: `Vertex Error ${gcpRes.status}: ${errTxt.slice(0, 300)}` }), { status: 200, headers });
+        }
         const resData = await gcpRes.json();
-        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-        // 🚀 THE ULTIMATE FIX FOR D1 DATABASE 🚀
-        // یہاں سے 'isPostAdmin' کی پابندی ختم کر دی گئی ہے، اب ہر میسج سیو ہوگا۔
+        // CHANGE 4: join all text parts and skip thinking parts
+        const rawText = (resData?.candidates?.[0]?.content?.parts || []).filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
         if (env.DB) {
           try {
-            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-              .bind(emailFromPost, "user", userMessage, Date.now()).run();
-            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)")
-              .bind(emailFromPost, "zara_ai", rawText, Date.now()).run();
+            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)").bind(emailFromPost, "user", userMessage, Date.now()).run();
+            await env.DB.prepare("INSERT INTO conversations (email, role, text, timestamp) VALUES (?, ?, ?, ?)").bind(emailFromPost, "zara_ai", rawText, Date.now()).run();
           } catch (dbErr) {
-            console.error("D1 Insert Error in POST:", dbErr); // ایرر لاگ میں دکھائے گا
+            console.error("D1 Insert Error in POST:", dbErr);
           }
         }
-
         const cleanTextForSpeech = rawText.split(/\[?CMD/i)[0].trim();
-
         let audioBase64 = "";
         try {
           const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              input: { text: cleanTextForSpeech }, 
+              input: { text: cleanTextForSpeech },
               voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" },
               audioConfig: { audioEncoding: "MP3" }
             })
@@ -333,20 +297,21 @@ export default {
             const ttsData = await ttsRes.json();
             audioBase64 = ttsData.audioContent || "";
           }
-        } catch {}
-
+        } catch {
+        }
         return new Response(JSON.stringify({
-          reply: rawText, 
+          reply: rawText,
           audioContent: audioBase64,
           agent_active: "zara"
         }), { status: 200, headers });
-
       } catch (e) {
         return new Response(JSON.stringify({ reply: `Server Error: ${e.message}` }), { status: 200, headers });
       }
     }
-
     return new Response("ZARA AI Active Core Engine Running", { status: 200, headers });
   }
 };
-            
+export {
+  main_default as default
+};
+                                                                                                                          
