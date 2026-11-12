@@ -132,7 +132,8 @@ var main_default = {
         const jwt = await getVertexToken(saJson);
         const accessToken = await fetchAccessToken(jwt);
         const memoryContext = await getRecentMemory(env, userEmail);
-        const finalMindset = baseMindset + memoryContext;
+        const extraInstructions = env.EXTRA_INSTRUCTIONS ? `\n\n[EXTRA INSTRUCTIONS]\n${env.EXTRA_INSTRUCTIONS}\n[END EXTRA INSTRUCTIONS]\n` : "";
+        const finalMindset = baseMindset + extraInstructions + memoryContext;
         const project = "tars-ai-chat-ann-assistant";
         const location = "us-central1";
         const vertexWsUrl = `https://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
@@ -289,7 +290,7 @@ var main_default = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               input: { text: cleanTextForSpeech },
-              voice: { languageCode: "ur-IN", name: "ur-IN-Wavenet-A" },
+              voice: { languageCode: "ur-IN", name: "ur-IN-Chirp3-HD-Aoede" },
               audioConfig: { audioEncoding: "MP3" }
             })
           });
