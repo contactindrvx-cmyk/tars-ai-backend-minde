@@ -259,28 +259,54 @@ var main_default = {
         const basePostMindset = isPostAdmin ? ZARA_MINDSET_ADMIN : ZARA_MINDSET_USER;
         const memoryContext = await getRecentMemory(env, emailFromPost);
         const finalPostMindset = basePostMindset + mandatoryInstructions + memoryContext;
-        const vertexKey = env.VERTEX_API_KEY;
-        const ttsKey = env.TTS_API_KEY;
-        if (!vertexKey || !ttsKey) {
-          return new Response(JSON.stringify({ reply: "API keys missing" }), { status: 200, headers });
+        const vertexKey = (env.VERTEX_API_KEY || "").trim();
+        const ttsKey = (env.TTS_API_KEY || "").trim();
+        const saJson = env.GOOGLE_SERVICE_ACCOUNT;
+        if ((!vertexKey && !saJson) || !ttsKey) {
+          return new Response(JSON.stringify({ reply: "API keys missing in Cloudflare Environment" }), { status: 200, headers });
         }
         const project = "tars-ai-chat-ann-assistant";
-        // CHANGE 2: gemini-4-argon is available on the global endpoint (not us-central1)
-        const vertexUrl = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemini-4-argon:generateContent?key=${vertexKey}`;
-        const gcpRes = await fetch(vertexUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${finalPostMindset}\n\nUser: ${userMessage}` }] }]
-          })
+        const baseVertexEndpoint = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemini-4-argon:generateContent`;
+        const requestPayload = JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: finalPostMindset }]
+          },
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: userMessage }]
+            }
+          ]
         });
-        // CHANGE 3: show the real Vertex error instead of a bare "Vertex Error"
+        let gcpRes;
+        if (vertexKey) {
+          gcpRes = await fetch(`${baseVertexEndpoint}?key=${vertexKey}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-user-project": project
+            },
+            body: requestPayload
+          });
+        }
+        if ((!gcpRes || !gcpRes.ok) && saJson) {
+          const jwt = await getVertexToken(saJson);
+          const accessToken = await fetchAccessToken(jwt);
+          gcpRes = await fetch(baseVertexEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${accessToken}`,
+              "x-goog-user-project": project
+            },
+            body: requestPayload
+          });
+        }
         if (!gcpRes.ok) {
           const errTxt = await gcpRes.text();
           return new Response(JSON.stringify({ reply: `Vertex Error ${gcpRes.status}: ${errTxt.slice(0, 300)}` }), { status: 200, headers });
         }
         const resData = await gcpRes.json();
-        // CHANGE 4: join all text parts and skip thinking parts
         const rawText = (resData?.candidates?.[0]?.content?.parts || []).filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
         if (env.DB) {
           try {
